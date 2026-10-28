@@ -222,3 +222,41 @@ dialog.visionneuse::backdrop { background: rgba(17,16,20,.97); }
   .visionneuse .scene { padding: 68px 12px 88px; }
   .visionneuse .prec, .visionneuse .suiv { top: auto; bottom: 16px; translate: none; }
 }
+
+/* Contact : coordonnées et formulaire */
+.contact-grille { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(48px, 7vw, 120px); align-items: start; }
+@media (max-width: 900px) { .contact-grille { grid-template-columns: 1fr; } }
+.coordonnees { margin: clamp(36px, 5vw, 56px) 0 0; display: grid; gap: 0; }
+.coordonnees div { display: grid; grid-template-columns: 120px 1fr; gap: 16px; padding: 16px 0; border-top: 1px solid rgba(236,231,223,.1); }
+.coordonnees div:last-child { border-bottom: 1px solid rgba(236,231,223,.1); }
+.coordonnees dt { color: var(--fumee); font-size: .92rem; }
+.coordonnees dd { margin: 0; color: var(--texte); font-weight: 400; word-break: break-word; }
+.coordonnees a { text-decoration: none; color: var(--texte); transition: color .2s; }
+.coordonnees a:hover { color: var(--laiton); }
+.formulaire { background: var(--nuit-2); padding: clamp(28px, 4vw, 56px); border-radius: 2px; display: grid; gap: 22px; }
+.champ { display: grid; gap: 8px; }
+.champ label { font-size: .92rem; color: var(--fumee); }
+.champ label span { color: #6f685f; }
+.champ input, .champ textarea {
+  width: 100%; font: 300 1.05rem/1.5 var(--body); color: var(--texte);
+  background: transparent; border: 0; border-bottom: 1px solid rgba(236,231,223,.25);
+  padding: 8px 0 10px; border-radius: 0; transition: border-color .2s;
+}
+.champ textarea { resize: vertical; min-height: 140px; }
+.champ input:focus, .champ textarea:focus { outline: none; border-bottom-color: var(--laiton); }
+.envoyer {
+  justify-self: start; margin-top: 8px; cursor: pointer;
+  font: 400 1rem/1 var(--body); letter-spacing: .02em; color: var(--encre);
+  background: var(--laiton); border: 0; border-radius: 2px; padding: 16px 28px; transition: filter .2s;
+}
+.envoyer:hover { filter: brightness(1.08); }
+.envoyer:focus-visible { outline: 1.5px solid var(--laiton); outline-offset: 4px; }
+
+/* Page de remerciement */
+.merci { min-height: 100svh; display: flex; align-items: center; }
+.merci h1 { margin: 0 0 24px; font: 200 clamp(4rem, 14vw, 11rem)/.86 var(--display); text-transform: uppercase; color: var(--ivoire); }
+.merci p { margin: 0 0 36px; color: var(--fumee); font-size: 1.15rem; max-width: 40ch; }
+
+/* Bouton Contact dans la navigation */
+.nav ul li:last-child a { opacity: 1; color: var(--laiton); padding: 9px 18px; border: 1px solid rgba(200,162,107,.6); border-radius: 2px; transition: background .2s, color .2s; }
+.nav ul li:last-child a:hover { background: var(--laiton); color: var(--encre); }

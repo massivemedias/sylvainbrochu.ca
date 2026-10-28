@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sylvain Brochu, direction de production et gestion de projets</title>
 <meta name="description" content="Sylvain Brochu, gestionnaire de production et de projets à Montréal : plus de 25 ans en événementiel, scénographie, expositions et luminaires sur mesure, du Cirque du Soleil au Grand Prix de Formule 1.">
-<link rel="canonical" href="https://sylvainbrochu.ca/">
+<link rel="canonical" href="https://www.sylvainbrochu.ca/">
 <meta property="og:type" content="profile">
 <meta property="og:title" content="Sylvain Brochu, direction de production et gestion de projets">
 <meta property="og:description" content="Plus de 25 ans en événementiel, scénographie, expositions et luminaires sur mesure, du Cirque du Soleil au Grand Prix de Formule 1.">
 <meta property="og:image" content="https://static.wixstatic.com/media/58c60e_621bf9b2a0f949c59ea06dfa62dfcab5.jpg/v1/fill/w_1200,h_630,al_c,q_85,enc_auto/sylvain-brochu.jpg">
-<meta property="og:url" content="https://sylvainbrochu.ca/">
+<meta property="og:url" content="https://www.sylvainbrochu.ca/">
 <meta property="og:locale" content="fr_CA">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#17151a">
@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://static.wixstatic.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@200;300;400&family=Radio+Canada:wght@300;400;500&display=swap">
 <link rel="stylesheet" href="/styles.css">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Person", "name": "Sylvain Brochu", "jobTitle": "Gestionnaire de production et de projets", "email": "mailto:sylvain@cartel.ca", "telephone": "+1-514-299-5986", "address": {"@type": "PostalAddress", "addressLocality": "Montréal", "addressRegion": "QC", "addressCountry": "CA"}, "url": "https://sylvainbrochu.ca", "sameAs": ["https://www.linkedin.com/in/sylvain-brochu-profil/"]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Person", "name": "Sylvain Brochu", "jobTitle": "Gestionnaire de production et de projets", "email": "mailto:sylvain@cartel.ca", "telephone": "+1-514-299-5986", "address": {"@type": "PostalAddress", "addressLocality": "Montréal", "addressRegion": "QC", "addressCountry": "CA"}, "url": "https://www.sylvainbrochu.ca", "sameAs": ["https://www.linkedin.com/in/sylvain-brochu-profil/"]}</script>
 </head>
 <body>
 <a class="sr" href="#projets">Aller aux projets</a>
@@ -256,15 +256,40 @@
 </div>
 
 <section class="contact" id="contact" aria-labelledby="t-contact">
-  <div class="wrap">
-    <h2 id="t-contact">Parlons de votre prochain projet</h2>
-    <p class="intro">Disponible pour un poste en direction de production, en gestion de projets ou en direction des opérations.</p>
-    <a class="courriel" href="mailto:sylvain@cartel.ca">sylvain@cartel.ca</a>
-    <div class="details">
-      <span>Téléphone <a href="tel:+15142995986">514-299-5986</a></span>
-      <span><a href="https://www.linkedin.com/in/sylvain-brochu-profil/" rel="noopener" target="_blank">LinkedIn</a></span>
-      <span>Montréal, Québec</span>
+  <div class="wrap contact-grille">
+    <div class="contact-texte">
+      <h2 id="t-contact">Parlons de votre prochain projet</h2>
+      <p class="intro">Disponible pour un poste en direction de production, en gestion de projets ou en direction des opérations. Écrivez-lui directement ou laissez un message avec le formulaire.</p>
+      <dl class="coordonnees">
+        <div><dt>Courriel</dt><dd><a href="mailto:sylvain@cartel.ca">sylvain@cartel.ca</a></dd></div>
+        <div><dt>Téléphone</dt><dd><a href="tel:+15142995986">514-299-5986</a></dd></div>
+        <div><dt>LinkedIn</dt><dd><a href="https://www.linkedin.com/in/sylvain-brochu-profil/" rel="noopener" target="_blank">sylvain-brochu-profil</a></dd></div>
+        <div><dt>Lieu</dt><dd>Montréal, Québec</dd></div>
+      </dl>
     </div>
+    <form class="formulaire" action="https://formsubmit.co/sylvain@cartel.ca" method="POST">
+      <input type="hidden" name="_subject" value="Nouveau message depuis sylvainbrochu.ca">
+      <input type="hidden" name="_template" value="table">
+      <input type="hidden" name="_next" value="https://www.sylvainbrochu.ca/merci.html">
+      <input type="text" name="_honey" class="sr" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="champ">
+        <label for="f-nom">Nom</label>
+        <input id="f-nom" name="Nom" type="text" autocomplete="name" required>
+      </div>
+      <div class="champ">
+        <label for="f-courriel">Courriel</label>
+        <input id="f-courriel" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="champ">
+        <label for="f-org">Entreprise ou organisation <span>(facultatif)</span></label>
+        <input id="f-org" name="Entreprise" type="text" autocomplete="organization">
+      </div>
+      <div class="champ">
+        <label for="f-message">Message</label>
+        <textarea id="f-message" name="Message" rows="6" required></textarea>
+      </div>
+      <button type="submit" class="envoyer">Envoyer le message</button>
+    </form>
   </div>
 </section>
 </main>
