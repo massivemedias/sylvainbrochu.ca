@@ -87,6 +87,43 @@
     });
   }
 
+  // Apparition au défilement
+  var aAnimer = document.querySelectorAll('.chiffres li, .postes li, .cv-carte, .etapes li, .domaines li, .cartes.quatre .carte');
+  if ('IntersectionObserver' in window && aAnimer.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('js');
+    var obs = new IntersectionObserver(function (entrees) {
+      entrees.forEach(function (en) {
+        if (en.isIntersecting) { en.target.classList.add('vu'); obs.unobserve(en.target); }
+      });
+    }, { rootMargin: '0px 0px -6% 0px', threshold: 0.1 });
+    aAnimer.forEach(function (el) {
+      var i = Array.prototype.indexOf.call(el.parentNode.children, el);
+      el.style.transitionDelay = (i % 5) * 80 + 'ms';
+      el.setAttribute('data-apparait', '');
+      obs.observe(el);
+    });
+  }
+
+  // Bouton CV flottant : visible après le haut de page, masqué près des autres boutons CV et du pied
+  var flottant = document.querySelector('.cv-flottant');
+  if (flottant) {
+    var zones = Array.prototype.slice.call(document.querySelectorAll('.appel, .pied, .cv-carte, .imprimer, .hero'));
+    var visibles = 0;
+    var maj = function () {
+      flottant.classList.toggle('visible', visibles === 0 && window.scrollY > 240);
+    };
+    if ('IntersectionObserver' in window) {
+      var vus = new IntersectionObserver(function (entrees) {
+        entrees.forEach(function (en) { en.target.dataset.vis = en.isIntersecting ? '1' : ''; });
+        visibles = zones.filter(function (z) { return z.dataset.vis === '1'; }).length;
+        maj();
+      });
+      zones.forEach(function (z) { vus.observe(z); });
+    }
+    window.addEventListener('scroll', maj, { passive: true });
+    maj();
+  }
+
   var annee = document.getElementById('annee');
   if (annee) annee.textContent = new Date().getFullYear();
 })();
