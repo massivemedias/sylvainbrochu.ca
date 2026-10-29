@@ -94,16 +94,106 @@ async function collecter() {
   return { offres, etat, maj: new Date().toISOString() };
 }
 
+// ---------- Carte : localisation des offres ----------
+// Chaque offre est placée sur l'entreprise (recherche du nom dans OpenStreetMap), sinon sur la ville.
+// Les résultats sont gardés dans le hash Redis sb:geo pour ne chercher qu'une fois.
+const GEO = "sb:geo";
+const sansAccents = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function villeDe(lieu) {
+  let v = String(lieu || "").split(/[,|]/)[0].replace(/\(\s*QC\s*\)/i, "").replace(/\b(Canada|QC)\b/gi, "").trim();
+  if (!v || /^(télétravail|remote|hybride|plusieurs|divers)/i.test(v)) v = "Montréal";
+  if (/^qu[ée]bec$/i.test(v)) v = "Québec";
+  return v;
+}
+function nomsEntreprise(e) {
+  const brut = String(e || "").trim();
+  if (!brut) return [];
+  const dedans = (brut.match(/\(([^)]+)\)/) || [])[1] || "";
+  const dehors = brut.replace(/\([^)]*\)/g, " ");
+  const net = (x) => x.replace(/\b(inc|ltée|ltee|limitée|ltd|enr|s\.?e\.?n\.?c)\.?/gi, " ").replace(/[?*]/g, " ").replace(/\s+/g, " ").trim();
+  return [...new Set([net(dedans), net(dehors)].filter((x) => x.length > 2))];
+}
+const cleVille = (o) => "v:" + sansAccents(villeDe(o.lieu)).toLowerCase();
+const clesEntreprise = (o) => nomsEntreprise(o.entreprise).map((n) => "e:" + sansAccents(`${n}|${villeDe(o.lieu)}`).toLowerCase());
+
+async function nominatim(q) {
+  const u = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=ca&accept-language=fr&q=${encodeURIComponent(q)}`;
+  const r = await obtenir(u, { headers: { "User-Agent": "sylvainbrochu.ca admin (massivemedias@gmail.com)", Accept: "application/json" } });
+  const j = await r.json();
+  return j && j[0] ? { lat: Number(j[0].lat), lon: Number(j[0].lon), nom: j[0].display_name } : null;
+}
+
+async function lireGeo() {
+  const l = (await cmd("HGETALL", GEO)) || [];
+  const m = {};
+  for (let i = 0; i < l.length; i += 2) { try { m[l[i]] = JSON.parse(l[i + 1]); } catch { /* ignoré */ } }
+  return m;
+}
+
+function distanceKm(a, b) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function placer(r, geo) {
+  let attente = 0;
+  const offres = r.offres.map((o) => {
+    const ce = clesEntreprise(o);
+    const gvTmp = geo[cleVille(o)];
+    // Un résultat d'entreprise à plus de 40 km de sa ville est un homonyme : on l'ignore.
+    const proche = (g) => !gvTmp || !gvTmp.lat || distanceKm(g, gvTmp) < 40;
+    const trouve = ce.map((k) => geo[k]).find((g) => g && g.lat && proche(g));
+    const essaye = ce.length === 0 || ce.every((k) => geo[k]);
+    const gv = geo[cleVille(o)];
+    if (!essaye || !gv) attente++;
+    const g = trouve ? { lat: trouve.lat, lon: trouve.lon, precis: "entreprise" } : (gv && gv.lat ? { lat: gv.lat, lon: gv.lon, precis: "ville" } : null);
+    return { ...o, geo: g };
+  });
+  return { ...r, offres, geoAttente: attente };
+}
+
+async function localiser(r, geo, budgetMs = 18000) {
+  const debut = Date.now();
+  const aFaire = [];
+  const vu = new Set();
+  // Les villes d'abord (tout le monde a au moins un point), puis les entreprises.
+  for (const o of r.offres) { const k = cleVille(o); if (!geo[k] && !vu.has(k)) { vu.add(k); aFaire.push([k, `${villeDe(o.lieu)}, Québec`]); } }
+  for (const o of r.offres) {
+    const noms = nomsEntreprise(o.entreprise);
+    noms.forEach((n, i) => { const k = clesEntreprise(o)[i]; if (!geo[k] && !vu.has(k)) { vu.add(k); aFaire.push([k, `${n}, ${villeDe(o.lieu)}`]); } });
+  }
+  for (const [k, q] of aFaire) {
+    if (Date.now() - debut > budgetMs) break;
+    let res = null;
+    try { res = await nominatim(q); } catch { break; }
+    const v = res || { x: 1 };
+    geo[k] = v;
+    await cmd("HSET", GEO, k, JSON.stringify(v));
+    await new Promise((ok) => setTimeout(ok, 1100)); // règle d'usage de Nominatim : 1 requête par seconde
+  }
+  return geo;
+}
+
+async function offresEnCache(rafraichir) {
+  if (!rafraichir) {
+    const c = await cmd("GET", "sb:cache:offres");
+    if (c) return JSON.parse(c);
+  }
+  const r = await collecter();
+  await cmd("SET", "sb:cache:offres", JSON.stringify(r), "EX", 3 * 3600);
+  return r;
+}
+
 export default async function handler(req, res) {
   try {
     const u = await exiger(req, res); if (!u) return;
     if (req.method !== "GET") return json(res, 405, { erreur: "Méthode non permise" });
-    if (parametres(req).get("rafraichir") !== "1") {
-      const c = await cmd("GET", "sb:cache:offres");
-      if (c) return json(res, 200, JSON.parse(c));
-    }
-    const r = await collecter();
-    await cmd("SET", "sb:cache:offres", JSON.stringify(r), "EX", 3 * 3600);
-    return json(res, 200, r);
+    const q = parametres(req);
+    const r = await offresEnCache(q.get("rafraichir") === "1");
+    let geo = await lireGeo();
+    if (q.get("geo") === "1") geo = await localiser(r, geo);
+    return json(res, 200, placer(r, geo));
   } catch (e) { return erreur(res, e); }
 }
