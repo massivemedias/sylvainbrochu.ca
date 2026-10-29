@@ -11,6 +11,10 @@ const CARRIERE = /(chargé|charg[ée]e|gestionnaire|directeur|directrice|directi
 const EXCLURE = /(stagiaire|stage |intern\b|comptab|developpeur|développeur|software|ingénieur logiciel|vente au détail|caissier|marketing|ventes|sales|financ|juridique|legal|paie|payroll|data|analyste|cybers|informatique|\bTI\b|\bIT\b|ressources humaines|talent)/i;
 const TEMPO = /(barman|barmaid|bartender|mixolog|serveu|banquet|maître d'hôtel|maitre d'hotel|sommelier|bar\b|salle|réception|evenement|événement)/i;
 
+// Restauration rapide et dépanneurs : pas le genre d'emploi temporaire que Sylvain cherche.
+const RAPIDE = /(tim\s*hortons?|mc\s*donald|a\s*&\s*w\b|subway|burger\s*king|starbucks|wendy'?s|\bkfc\b|pizza\s*hut|dairy\s*queen|harvey'?s|second\s*cup|dunkin|popeyes|taco\s*bell|mary\s*brown|domino'?s|pizza\s*pizza|thai\s*express|valentine|belle\s*province|lafleur|chez\s*cora|\bcora\b|benny\s*&|mikes?\s*(resto|restaurant)?\b|normandin|restauration\s*rapide|fast[\s-]*food|casse[\s-]*cro[uû]te|couche[\s-]*tard|d[ée]panneur|caf[ée]\s*d[ée]p[ôo]t|tutti\s*frutti|poulet\s*frit|shawarma|pizzeria)/i;
+const pasRapide = (o) => !RAPIDE.test(`${o.entreprise || ""} ${o.titre || ""}`);
+
 const id = (u) => createHash("sha1").update(u).digest("hex").slice(0, 12);
 const entites = (s) => String(s || "").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
   .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
@@ -139,7 +143,7 @@ function distanceKm(a, b) {
 
 function placer(r, geo) {
   let attente = 0;
-  const offres = r.offres.map((o) => {
+  const offres = r.offres.filter(pasRapide).map((o) => {
     const ce = clesEntreprise(o);
     const gvTmp = geo[cleVille(o)];
     // Un résultat d'entreprise à plus de 40 km de sa ville est un homonyme : on l'ignore.
@@ -159,6 +163,7 @@ async function localiser(r, geo, budgetMs = 18000) {
   const aFaire = [];
   const vu = new Set();
   // Les villes d'abord (tout le monde a au moins un point), puis les entreprises.
+  r = { ...r, offres: r.offres.filter(pasRapide) };
   for (const o of r.offres) { const k = cleVille(o); if (!geo[k] && !vu.has(k)) { vu.add(k); aFaire.push([k, `${villeDe(o.lieu)}, Québec`]); } }
   for (const o of r.offres) {
     const noms = nomsEntreprise(o.entreprise);
