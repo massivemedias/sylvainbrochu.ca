@@ -101,6 +101,18 @@ async function demarrer() {
     etat.d = r.donnees;
     rendreCoque();
     window.addEventListener("hashchange", allerA);
+    // Quand on revient sur l'onglet, on recharge les données pour ne jamais travailler sur une copie périmée.
+    let dernierRafraichissement = Date.now();
+    const rafraichir = async () => {
+      if (document.hidden || !$("#modale").hidden || Date.now() - dernierRafraichissement < 15000) return;
+      const enCours = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+      if (enCours) return;
+      dernierRafraichissement = Date.now();
+      try { const n = await api("/api/donnees/?cle=tout"); etat.d = n.donnees; if (["tableau", "candidatures"].includes(etat.page)) rendrePage(); } catch { /* hors ligne */ }
+    };
+    document.addEventListener("visibilitychange", rafraichir);
+    window.addEventListener("focus", rafraichir);
+    setInterval(rafraichir, 60000);
     allerA();
     const etatBoite = () => api("/api/courriels/?action=etat").then((m) => (m.pret ? m : new Promise((ok) => setTimeout(ok, 1500)).then(() => api("/api/courriels/?action=etat"))));
     etatBoite().then((m) => {
