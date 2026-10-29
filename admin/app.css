@@ -280,3 +280,5 @@ select, .champ select, select.choix, .tab select {
 select:hover { border-color: var(--texte); }
 select::-ms-expand { display: none; }
 select option { background: #fff; color: var(--texte); }
+
+.btn.plein-danger { background: var(--urg); border-color: var(--urg); color: #fff; }

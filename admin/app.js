@@ -326,7 +326,7 @@ function pCandidatures() {
     <td><div class="actions" style="flex-wrap:nowrap">
       ${r && r.enRetard ? `<button class="btn petit laiton" data-act="relancer" data-id="${c.id}">Relancer</button>` : ""}
       ${["a_preparer", "brouillon"].includes(c.statut) && (c.courriel || c.formulaire || c.lien) ? `<button class="btn petit laiton" data-act="preparer" data-id="${c.id}" title="${c.courriel ? "Prépare le courriel avec le CV joint" : "Copie la lettre et ouvre le site de l'employeur"}">${c.courriel ? "Préparer le courriel" : "Postuler sur le site"}</button>${!c.courriel ? `<button class="btn petit" data-act="envoyee" data-id="${c.id}">Envoyée</button>` : ""}` : ""}
-      <button class="btn petit" data-act="fiche" data-id="${c.id}">Ouvrir</button></div></td></tr>`; }).join("") || `<tr><td colspan="7" class="vide" style="text-align:center;padding:30px">Aucune candidature dans ce filtre.</td></tr>`}
+      <button class="btn petit" data-act="fiche" data-id="${c.id}">Ouvrir</button><button class="btn petit danger" data-act="supprimer-cand" data-id="${c.id}" title="Supprimer cette candidature" aria-label="Supprimer la candidature ${E(c.entreprise)}">Supprimer</button></div></td></tr>`; }).join("") || `<tr><td colspan="7" class="vide" style="text-align:center;padding:30px">Aucune candidature dans ce filtre.</td></tr>`}
   </tbody></table></div>`;
   $("#rech").oninput = (e) => { etat.rech = e.target.value; const pos = e.target.selectionStart; pCandidatures(); const r = $("#rech"); r.focus(); r.setSelectionRange(pos, pos); };
 }
@@ -1051,6 +1051,11 @@ document.addEventListener("click", async (e) => {
     case "nouvelle": return ficheCandidature({ id: uid(), statut: "a_preparer", type: "offre", cv: "carriere", priorite: 2, historique: [] }, true);
     case "fiche": return cand && ficheCandidature(cand);
     case "preparer": return cand && preparerCandidature(cand);
+    case "supprimer-cand": {
+      if (!cand) return;
+      if (t.dataset.ok !== "1") { t.dataset.ok = "1"; t.textContent = "Confirmer"; t.classList.add("plein-danger"); setTimeout(() => { if (t.isConnected) { delete t.dataset.ok; t.textContent = "Supprimer"; t.classList.remove("plein-danger"); } }, 4000); return; }
+      etat.d.candidatures = etat.d.candidatures.filter((x) => x.id !== cand.id); sauver("candidatures"); toast(`Candidature ${cand.entreprise} supprimée.`); return rendrePage();
+    }
     case "envoyee": {
       if (!cand) return;
       if (t.dataset.ok !== "1") { t.dataset.ok = "1"; t.textContent = "Confirmer"; return; }
