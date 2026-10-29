@@ -430,8 +430,8 @@ function courrielDe(texte) {
 function lienPostuler(h, base) {
   const ext = h.match(/<a\b[^>]*id=["']externalJobLink["'][^>]*href=["']([^"']+)["']/i) || h.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*id=["']externalJobLink["']/i);
   if (ext) { try { return new URL(entites(ext[1]), base).href; } catch { /* lien invalide */ } }
-  for (const m of h.matchAll(/<a\b[^>]*?href=["']([^"'#][^"']*)["'][^>]*>([\s\S]{0,300}?)<\/a>/gi)) {
-    const txt = texte(m[2]);
+  for (const m of h.matchAll(/<a\b[^>]*?href=["']([^"'#][^"']*)["'][^>]*>([\s\S]{0,4000}?)<\/a>/gi)) {
+    const txt = texte(m[2].replace(/<svg\b[\s\S]*?<\/svg>/gi, " "));
     if (!/^(postuler|postulez|apply|apply now|soumettre ma candidature|poser ma candidature|je postule|postuler maintenant|candidature en ligne)\b/i.test(txt)) continue;
     if (/^(javascript|mailto|tel):/i.test(m[1])) continue;
     try { return new URL(entites(m[1]), base).href; } catch { /* lien invalide */ }
@@ -449,7 +449,7 @@ export async function detailOffre(url, titreConnu = "") {
   const ok = urlPermise(url); if (!ok) throw Object.assign(new Error("Lien d'offre invalide"), { status: 400 });
   const cle = "sb:detail2:" + id(ok);
   try { const c = await cmd("GET", cle); if (c) return JSON.parse(c); } catch { /* pas de cache */ }
-  const r = await obtenir(ok, { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36", "Accept-Language": "fr-CA,fr;q=0.9,en;q=0.6", Accept: "text/html,*/*" } });
+  const r = await obtenir(ok, { headers: { "Accept-Language": "fr-CA,fr;q=0.9,en;q=0.6", Accept: "text/html,*/*" } });
   const h = cfEmails(await r.text());
   const p = postingsLD(h)[0];
   let d;
