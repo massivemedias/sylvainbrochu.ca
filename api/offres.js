@@ -167,7 +167,8 @@ function dateRelative(s) {
 // Le site limite les requêtes : peu de recherches, gardées 12 h.
 async function eluta(q) {
   const h = await (await obtenir(`https://www.eluta.ca/search?q=${encodeURIComponent(q)}&l=${encodeURIComponent("Montréal, QC")}`)).text();
-  if (/User Verification/i.test(h.slice(0, 4000))) throw new Error("Eluta limite les requêtes, nouvel essai plus tard");
+  if (/User Verification|are you a human|reCAPTCHA/i.test(h)) throw new Error("Eluta limite les requêtes, nouvel essai plus tard");
+  if (!h.includes("organic-job") && !/no jobs|did not match|aucun/i.test(h)) throw new Error("Eluta : page inattendue");
   return h.split('class="organic-job').slice(1).map((b) => {
     const g = (re) => (b.match(re) || [])[1] || "";
     const u = g(/data-url="([^"]+)"/);
@@ -266,7 +267,7 @@ async function collecter() {
     ...["chargé de projets événements", "directeur de production", "gestionnaire de production spectacle", "coordonnateur de production événement"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "carriere")).filter((o) => DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o))]),
     ...["barman", "serveur banquet"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "temporaire")).filter(pertinent)]),
     ["CQT (théâtre)", cqt],
-    ["Eluta (sites carrières des employeurs)", () => enReserve("eluta", 12, async () => {
+    ["Eluta (sites carrières des employeurs)", () => enReserve("eluta2", 12, async () => {
       const l = [];
       for (const q of ["directeur de production", "chargé de projets événements"]) { l.push(...(await eluta(q))); await new Promise((ok) => setTimeout(ok, 1500)); }
       return l;
