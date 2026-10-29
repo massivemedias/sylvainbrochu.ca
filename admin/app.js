@@ -150,7 +150,7 @@ function aFaire() {
     if (r && r.enRetard) out.push({ type: "relance", c, tri: r.due, texte: `Relancer ${ent}`, detail: `Tu as postulé le ${dateCourte(c.envoyeLe)}, sans réponse. Ton courriel de relance est prêt.`, bouton: "Préparer la relance" });
     if (c.statut === "a_preparer") {
       const m = methode(c);
-      out.push({ type: "postuler", c, tri: (c.echeance && c.echeance >= auj ? c.echeance : "9999") + (c.priorite || 3), texte: `Postuler chez ${ent}`, detail: `${c.poste ? posteCourt(c.poste) + ". " : ""}${m === "courriel" ? "Par courriel." : m === "site" ? "Sur le site de l'employeur." : ""}${c.echeance && c.echeance >= auj ? ` Date limite : ${dateCourte(c.echeance)}` : ""}`, bouton: "Je postule" });
+      out.push({ type: "postuler", c, tri: (c.echeance && c.echeance >= auj ? c.echeance : "9999") + (c.priorite || 3), texte: `Postuler chez ${ent}`, detail: `${c.poste ? posteCourt(c.poste) + ". " : ""}${m === "courriel" ? "Par courriel." : m === "site" ? "Sur le site de l'employeur." : ""}${c.echeance && c.echeance >= auj ? ` Date limite : ${dateCourte(c.echeance)}` : ""}`, bouton: "Postuler" });
     }
     if (c.statut === "brouillon") out.push({ type: "brouillon", c, tri: "9" + (c.priorite || 3), texte: `Envoyer ta candidature chez ${ent}`, detail: "Ton courriel est déjà prêt avec ton CV joint. Relis-le et envoie-le.", bouton: "Relire et envoyer" });
   });
@@ -422,7 +422,7 @@ function pTableau() {
   <section class="prochaine">
     <span class="etiquette">Ta prochaine étape</span>
     ${t0 ? `<h2>${E(t0.texte)}</h2><p>${E(t0.detail)}</p><div class="actions">${boutonTache(t0, true)}</div>`
-      : `<h2>Choisis une offre qui te plaît</h2><p>De nouvelles offres sont cherchées pour toi chaque jour. Clique « Je postule » sur celle qui t'intéresse : ta lettre et ton CV sont prêts.</p><div class="actions"><a class="btn laiton grand" href="#offres">Voir les offres</a></div>`}
+      : `<h2>Choisis une offre qui te plaît</h2><p>De nouvelles offres sont cherchées pour toi chaque jour. Clique « Postuler » sur celle qui t'intéresse : ta lettre et ton CV sont prêts.</p><div class="actions"><a class="btn laiton grand" href="#offres">Voir les offres</a></div>`}
   </section>
   <div id="d-mails"></div>
   ${commentPostuler()}
@@ -463,16 +463,16 @@ function offresAccueil() {
   const neuves = trierOffres(dispo.filter((x) => estNouvelle(x) && !sous60(x)));
   const l = (neuves.length ? neuves : trierOffres(dispo.filter((x) => !sous60(x)))).slice(0, 5);
   el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} depuis ta dernière visite.</p>` : `<p class="aide">Pas de nouvelle offre depuis ta dernière visite. Les plus intéressantes :</p>`)
-    + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : salaireCourt(x) || "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
+    + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : salaireCourt(x) || "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Postuler</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
 }
 function commentPostuler() {
   let ferme = false; try { ferme = localStorage.getItem("sb-mode-emploi") === "ferme"; } catch { /* stockage indisponible */ }
   return `<details class="carte mode-emploi" ${ferme ? "" : "open"}>
     <summary><h2>Comment postuler</h2><span class="aide">3 étapes, tout est préparé pour toi</span></summary>
     <ol class="trois">
-      <li><b>Choisis une offre</b><span>Dans <a href="#offres">Offres d'emploi</a>, clique « Je postule » sur celle qui t'intéresse.</span></li>
+      <li><b>Choisis une offre</b><span>Dans <a href="#offres">Offres d'emploi</a>, clique « Postuler » sur celle qui t'intéresse.</span></li>
       <li><b>Suis le guide</b><span><b class="m-courriel">Par courriel</b> : ton courriel est prêt avec ton CV joint, tu le relis et tu l'envoies.<br><b class="m-site">Sur le site de l'employeur</b> : tu copies ta lettre, tu télécharges ton CV, tu ouvres le formulaire et tu y mets les deux.</span></li>
-      <li><b>C'est envoyé</b><span>Pour un site, clique « J'ai postulé ». Sans réponse après ${R()} jours, « Relancer » apparaît ici avec le courriel déjà écrit.</span></li>
+      <li><b>C'est envoyé</b><span>Pour un site, clique « Marquer comme envoyée ». Sans réponse après ${R()} jours, « Relancer » apparaît ici avec le courriel déjà écrit.</span></li>
     </ol></details>`;
 }
 function boutonTache(t, grand = false) {
@@ -557,13 +557,13 @@ function guidePostuler(c) {
     <p>À <b>${E(c.courriel)}</b>, depuis info@sylvainbrochu.ca.</p>
     <ol class="pas"><li><span>Relis ta lettre, plus bas.</span></li>
     <li><span>Le courriel se prépare avec ta lettre et ton CV ${cv.nom} joint. Vérifie, puis envoie.</span><button type="button" class="btn laiton" data-m="courriel">Préparer le courriel</button></li></ol>
-    <p class="aide">Déjà envoyé d'une autre façon ? <button type="button" class="btn lien" data-m="envoyee">J'ai postulé</button></p></div>`;
+    <p class="aide">Déjà envoyé d'une autre façon ? <button type="button" class="btn lien" data-m="envoyee">Marquer comme envoyée</button></p></div>`;
   if (c.formulaire || c.lien) return `<div class="guide g-site"><span class="mode">Postuler sur le site de l'employeur</span>
     <ol class="pas">
       <li><span>Copie ta lettre.</span><button type="button" class="btn" data-m="copier">Copier la lettre</button></li>
       <li><span>Télécharge ton CV ${cv.nom}.</span>${boutonCV}</li>
       <li><span>Ouvre le formulaire, colle ta lettre (Cmd+V) et joins ton CV.</span><button type="button" class="btn laiton" data-m="site">Ouvrir le formulaire</button></li>
-      <li><span>Quand c'est envoyé :</span><button type="button" class="btn plein" data-m="envoyee">J'ai postulé</button></li>
+      <li><span>Quand c'est envoyé :</span><button type="button" class="btn plein" data-m="envoyee">Marquer comme envoyée</button></li>
     </ol></div>`;
   return `<div class="guide g-inconnu"><span class="mode">Comment postuler ?</span><p>L'offre ne dit pas encore comment postuler. Ouvre l'offre pour trouver le courriel ou le lien du formulaire, puis ajoute-le dans « Détails de la candidature », plus bas.</p></div>`;
 }
@@ -626,7 +626,7 @@ function ficheCandidature(c, nouvelle = false) {
       }
       if (m === "site") { lire(); sauver("candidatures"); return postulerSite(c); }
       if (m === "envoyee") {
-        if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = "Oui, c'est envoyé"; return; }
+        if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = "Confirmer : c'est envoyé"; return; }
         lire(); marquerEnvoyee(c); fermerModale(); return rendrePage();
       }
       if (m === "courriel") {
@@ -682,7 +682,7 @@ function ficheCandidature(c, nouvelle = false) {
 function ouvrirMessagerie(c) {
   const texte = avecSignature(c.texte || lettrePour(c).texte);
   location.href = `mailto:${encodeURIComponent(c.courriel)}?subject=${encodeURIComponent(c.objet || lettrePour(c).objet)}&body=${encodeURIComponent(texte)}`;
-  toast("Ta messagerie s'ouvre avec le courriel écrit. Joins-y ton CV (« Télécharger le CV »), envoie, puis clique « J'ai postulé ».");
+  toast("Ta messagerie s'ouvre avec le courriel écrit. Joins-y ton CV (« Télécharger le CV »), envoie, puis clique « Marquer comme envoyée ».");
 }
 // Ouvre le brouillon de cette candidature dans Mes courriels.
 async function voirBrouillon(c) {
@@ -788,7 +788,7 @@ async function postulerSite(c) {
   const ok = c.texte ? await copier(avecSignature(c.texte)) : false;
   window.open(lien, "_blank", "noopener");
   if (!c.ouvertLe) { c.ouvertLe = jour(); noter(c, "Site de l'employeur ouvert pour postuler"); sauver("candidatures"); }
-  toast(ok ? "Lettre copiée. Dans le formulaire : colle-la (Cmd+V), joins ton CV, envoie, puis reviens cliquer « J'ai postulé »." : "Le formulaire s'ouvre. Mets-y ta lettre et ton CV, envoie, puis reviens cliquer « J'ai postulé ».");
+  toast(ok ? "Lettre copiée. Dans le formulaire : colle-la (Cmd+V), joins ton CV, envoie, puis reviens cliquer « Marquer comme envoyée »." : "Le formulaire s'ouvre. Mets-y ta lettre et ton CV, envoie, puis reviens cliquer « Marquer comme envoyée ».");
 }
 function marquerEnvoyee(c) {
   if (!c.envoyeLe) c.envoyeLe = jour();
@@ -996,7 +996,7 @@ const SITES = [
   ["Hôtellerie Jobs", (q) => `https://www.hotelleriejobs.com/fr/jobs?search=${encodeURIComponent(q)}`],
 ];
 function pOffres() {
-  $("#page").innerHTML = entete("Offres d'emploi", "Des offres en production, en événementiel et en bar ou service, cherchées pour toi chaque jour sur près de 40 sites d'emploi et pages carrières d'employeurs du grand Montréal. Clique « Je postule » sur celle qui t'intéresse.",
+  $("#page").innerHTML = entete("Offres d'emploi", "Des offres en production, en événementiel et en bar ou service, cherchées pour toi chaque jour sur près de 40 sites d'emploi et pages carrières d'employeurs du grand Montréal. Clique « Postuler » sur celle qui t'intéresse.",
     `<button class="btn" data-act="ajouter-offre">Ajouter une offre trouvée ailleurs</button><button class="btn" data-act="rafraichir-offres">Chercher maintenant</button>`) + `
   <div class="filtres" id="filtres-off"></div>
   <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot (production, bar...)" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
@@ -1041,7 +1041,7 @@ async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), for
       <h3>${neuve ? `<span class="pastille p-neuve">Nouvelle</span> ` : ""}<a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.titre)}</a></h3>
       <div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}${x.echeance ? `<span class="${ecart(jour(), x.echeance) <= 7 ? "ko-txt" : ""}">limite ${dateCourte(x.echeance)}</span>` : ""}</div>
       <div class="m etiquettes">${niv ? `<span class="pastille p-top">${niv}</span>` : ""}${sal ? `<span class="pastille ${sous60(x) ? "p-bas" : "p-salaire"}" title="${E(x.salaire || "")}">${E(sal)}</span>` : x.profil !== "temporaire" ? `<span class="pastille p-sans">Salaire non indiqué</span>` : ""}${x.methode === "courriel" ? `<span class="pastille p-envoye">Par courriel</span>` : x.methode === "site" ? `<span class="pastille p-brouillon">Sur le site</span>` : ""}<span class="pastille">${x.profil === "temporaire" ? "Bar et service" : "Carrière"}</span></div></div>
-    <div class="actions">${c ? `<button class="btn petit" data-act="fiche" data-id="${c.id}">Dans mes candidatures</button>` : `<button class="btn laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button>`}<button class="btn petit" data-act="lire-offre" data-oid="${x.id}">Lire l'offre</button>${x.sauvee ? `<button class="btn petit lien danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}" title="Cette offre ne s'affichera plus">Pas pour moi</button>`}</div>
+    <div class="actions">${c ? `<button class="btn petit" data-act="fiche" data-id="${c.id}">Voir la candidature</button>` : `<button class="btn laiton" data-act="offre-vers-cand" data-oid="${x.id}">Postuler</button>`}<button class="btn petit" data-act="lire-offre" data-oid="${x.id}">Lire l'offre</button>${x.sauvee ? `<button class="btn petit lien danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}" title="Cette offre ne s'affichera plus">Ignorer</button>`}</div>
     ${x.resume ? `<p>${E(x.resume)}</p>` : ""}<div class="detail-offre" id="det-${x.id}" hidden></div></article>`;
   };
   el.innerHTML = (l.length ? `<p class="aide tri">Classées de la plus intéressante à la moins intéressante pour toi : le poste, le milieu, le salaire et la fraîcheur de l'offre.</p>` + l.map(carte).join("")
