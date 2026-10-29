@@ -60,8 +60,16 @@ async function reglages() {
 
 export async function avecImap(fn) {
   if (!MOT_DE_PASSE) throw new Error("COURRIEL_ABSENT");
-  const client = await connecter();
-  try { return await fn(client); } finally { try { await client.logout(); } catch { /* déjà fermé */ } }
+  for (let essai = 0; ; essai++) {
+    const client = await connecter();
+    try { return await fn(client); }
+    catch (e) {
+      // Gmail renvoie parfois « Command failed » au premier échange d'une connexion neuve : on refait une fois.
+      if (essai === 0 && !e.authenticationFailed && /Command failed/i.test(String(e.message))) { console.error("IMAP, nouvel essai :", e.message, e.responseText || ""); continue; }
+      throw e;
+    }
+    finally { try { await client.logout(); } catch { /* déjà fermé */ } }
+  }
 }
 
 async function chemins(client) {
@@ -315,6 +323,7 @@ export async function etat() {
     const n = await avecImap(async (client) => { const c = await chemins(client); return c; });
     return { pret: true, boite: UTILISATEUR, dossiers: n };
   } catch (e) {
+    console.error("IMAP etat :", e.message, e.responseText || "", e.serverResponseCode || "", e.code || "");
     const detail = [e.responseText, e.serverResponseCode, e.code].filter(Boolean).join(" | ");
     const raison = e.authenticationFailed ? `Gmail refuse le mot de passe d'application (${detail || e.message})` : (detail ? `${e.message} : ${detail}` : e.message);
     return { pret: false, raison, boite: UTILISATEUR, longueurMotDePasse: BRUT.length, essais: CANDIDATS.length };
