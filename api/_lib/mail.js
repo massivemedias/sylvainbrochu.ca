@@ -49,7 +49,7 @@ async function connecter() {
 }
 
 export const FILTRES = {
-  recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu)) -from:${INFO} -in:drafts -in:spam -in:trash`,
+  recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu) OR subject:"Sylvain Brochu") -from:${INFO} -from:${UTILISATEUR} -in:drafts -in:spam -in:trash`,
   envoyes: `from:${INFO} -in:drafts -in:trash`,
   brouillons: `from:${INFO}`,
 };
@@ -120,7 +120,9 @@ function autorise(p) {
   const tout = [p.from, p.to, p.cc, p.bcc].flatMap((x) => (x ? x.value : [])).map((x) => (x.address || "").toLowerCase());
   const formulaire = tout.includes("submissions@formsubmit.co") && /sylvainbrochu/i.test(p.subject || "");
   const viaInfo = /info@sylvainbrochu\.ca/i.test(String(p.headers.get("delivered-to") || "")) || /info@sylvainbrochu\.ca/i.test(String(p.headers.get("x-forwarded-to") || ""));
-  return tout.includes(INFO) || formulaire || viaInfo;
+  // Les accusés de réception automatiques partent parfois vers la boîte Gmail au lieu de info@ : on les reconnaît à l'objet.
+  const sujetCandidature = /Sylvain Brochu/i.test(p.subject || "");
+  return tout.includes(INFO) || formulaire || viaInfo || sujetCandidature;
 }
 
 export async function lire(dossier, uid) {
