@@ -1,6 +1,7 @@
 // /api/offres : veille d'offres d'emploi, à partir de sources publiques.
 // Carrière : Cirque du Soleil (Lever), Solotech, Humanise/GSM (Teamtailor), Guichet-Emplois.
 // Temporaire (bar, service) : Hôtellerie Jobs, Guichet-Emplois.
+// Aussi : Grenier aux emplois, Cultive, Jobillico, Talent.com.
 // GET ?rafraichir=1 pour ignorer le cache (3 h).
 import { createHash } from "node:crypto";
 import { exiger } from "./_lib/auth.js";
@@ -8,7 +9,7 @@ import { cmd } from "./_lib/kv.js";
 import { erreur, json, parametres } from "./_lib/util.js";
 
 const CARRIERE = /(chargé|charg[ée]e|gestionnaire|directeur|directrice|direction|coordonnat|responsable|producteur|productrice|chef de projet|project manager|production manager|operations manager|producer|logisti|opérations|operations|événement|evenement|event|scénograph|exposition|fabrication|atelier)/i;
-const EXCLURE = /(stagiaire|stage |intern\b|comptab|developpeur|développeur|software|ingénieur logiciel|vente au détail|caissier|marketing|ventes|sales|financ|juridique|legal|paie|payroll|data|analyste|cybers|informatique|\bTI\b|\bIT\b|ressources humaines|talent)/i;
+const EXCLURE = /(communication|médias?\b|medias?\b|philanthrop|journalist|réseaux sociaux|reseaux sociaux|campagne|chargée? de comptes|rédact|redact|édimest|edimest|contenu|publicit|relations publiques|affaires publiques|levée de fonds|financement|collecte de fonds|enseignant|professeur|direct\S*\s+(de\s+)?cr[ée]ation|direct\S*\s+artistique|technicien|technician|journalier|stratège|stratege|graphiste|designer graphique|seo\b|stagiaire|stage |intern\b|comptab|developpeur|développeur|software|ingénieur logiciel|vente au détail|caissier|marketing|ventes|sales|financ|juridique|legal|paie|payroll|data|analyste|cybers|informatique|\bTI\b|\bIT\b|ressources humaines|talent)/i;
 const TEMPO = /(barman|barmaid|bartender|mixolog|serveu|banquet|maître d'hôtel|maitre d'hotel|sommelier|bar\b|salle|réception|evenement|événement)/i;
 
 // Restauration rapide et dépanneurs : pas le genre d'emploi temporaire que Sylvain cherche.
@@ -49,7 +50,7 @@ async function teamtailor(compte, entreprise) {
   return [...x.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => {
     const it = m[1]; const g = (t) => texte((it.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1]);
     return { titre: g("title"), entreprise, lieu: g("tt:location") || "Montréal", url: g("link"), date: g("pubDate") ? new Date(g("pubDate")).toISOString() : "", source: "Teamtailor", profil: "carriere", resume: g("description").slice(0, 280) };
-  }).filter((o) => CARRIERE.test(o.titre));
+  }).filter((o) => CARRIERE.test(o.titre) && !EXCLURE.test(o.titre));
 }
 
 async function guichet(q, profil) {
@@ -62,7 +63,7 @@ async function guichet(q, profil) {
     const s = (e.match(/<summary[^>]*>([\s\S]*?)<\/summary>/) || [])[1] || "";
     const champ = (n) => texte((s.match(new RegExp(`${n}\\s*:?</strong>\\s*([^<]+)`)) || [])[1]);
     return { titre, entreprise: champ("Employeur"), lieu: champ("Emplacement"), salaire: champ("Salaire"), url, date: texte((e.match(/<updated>([^<]+)<\/updated>/) || [])[1]), source: "Guichet-Emplois", profil, resume: "" };
-  }).filter((o) => /\(QC\)/.test(o.lieu));
+  }).filter((o) => /\(QC\)/.test(o.lieu) && pertinent(o));
 }
 
 async function hotellerie(q) {
@@ -80,6 +81,65 @@ async function jooble(q, profil) {
   return (j.jobs || []).map((o) => ({ titre: o.title, entreprise: o.company, lieu: o.location, url: o.link, date: o.updated, source: "Jooble (" + (o.source || "") + ")", profil, resume: texte(o.snippet).slice(0, 280) }));
 }
 
+// Pour les grands sites généralistes : il faut un mot du milieu de Sylvain dans le titre (sinon : construction, TI, finance...).
+const DOMAINE = /(événement|evenement|évènement|event|spectacle|scène|scene|production|tournée|tournee|festival|cultur|exposition|musée|musee|scénograph|scenograph|théâtre|theatre|cirque|audiovisuel|immersi|divertissement|entertainment|fabrication|atelier|décor|decor|accessoir|salle|diffusion|arts?\b|créati|creati|attraction)/i;
+// Grand Montréal (Sylvain vit à Montréal) : les offres des sites généralistes hors de cette zone sont écartées.
+const REGION = /(montr|laval|longueuil|brossard|boucherville|saint-laurent|st-laurent|verdun|lachine|lasalle|anjou|pointe-claire|dorval|terrebonne|repentigny|blainville|boisbriand|mirabel|j[ée]r[ôo]me|th[ée]r[èe]se|ch[âa]teauguay|la prairie|candiac|saint-hubert|saint-lambert|vaudreuil|kirkland|beaconsfield|westmount|outremont|mont-royal|l[ée]onard|pointe-aux-trembles|rivi[èe]re-des-prairies|rosem[èe]re|mascouche|varennes|sainte-julie|chambly|saint-bruno|saint-eustache|deux-montagnes|pierrefonds|c[ôo]te-saint-luc|hampstead|delson|sainte-catherine|l'[îi]le-perrot|montreal)/i;
+const INDUSTRIE = /(journalier|op[ée]rateur|usine|manufactur|machin|soudeur|assembleur|entrep[ôo]t|approvisionnement|ing[ée]nierie|construction|dentaire|dental|alimentaire|agricole|plancher|meuble|plastique|m[ée]tal|m[ée]canique|pharma|chimique|imprimerie|emballage)/i;
+const pertinent = (o) => (!o.lieu || REGION.test(o.lieu)) && !INDUSTRIE.test(`${o.titre} ${o.entreprise}`) && !EXCLURE.test(o.titre);
+const enChamps = (h) => entites(String(h || "").replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, "|")).replace(/\s+/g, " ").replace(/\s*\|\s*/g, "|").replace(/\|+/g, "|");
+const jsonTexte = (s) => { try { return JSON.parse(`"${s}"`); } catch { return s; } };
+
+// Grenier aux emplois (culture, communications, création) : l'API publique renvoie toutes les offres en cours.
+async function grenier() {
+  const j = await (await obtenir("https://www.grenier.qc.ca/api/v1/jobs", { headers: { Accept: "application/json" } })).json();
+  const l = [...(j.data?.featured || []), ...(j.data?.standard || [])];
+  return l.filter((o) => CARRIERE.test(o.title) && !EXCLURE.test(o.title) && DOMAINE.test(`${o.title} ${o.employer?.name || ""}`) && (!o.city || REGION.test(o.city)))
+    .map((o) => ({ titre: texte(o.title), entreprise: texte(o.employer?.name || ""), lieu: o.city || "", contrat: o.job_type?.name || "", url: o.url, date: o.publication_date ? new Date(o.publication_date).toISOString() : "", source: "Grenier aux emplois", profil: "carriere", resume: "" }));
+}
+
+// Cultive (emplois en culture au Québec)
+async function cultive() {
+  const h = await (await obtenir("https://www.cultive.ca/fr/emplois")).text();
+  const liens = [...new Set([...h.matchAll(/href="(\/fr\/emplois\/[^"]+)"/g)].map((m) => m[1]))];
+  const cartes = enChamps(h).split(/Date de publication : /).slice(1).map((c) => {
+    const [date, ...reste] = c.split("|"); const f = reste.slice(0, Math.max(0, reste.indexOf("Détails")));
+    return { date, titre: f[0] || "", entreprise: f[f.length - 2] || "", lieu: f[f.length - 1] || "" };
+  });
+  return cartes.map((c, i) => ({ ...c, url: liens[i] ? "https://www.cultive.ca" + liens[i] : "" }))
+    .filter((o) => o.url && CARRIERE.test(o.titre) && !EXCLURE.test(o.titre) && (!o.lieu || REGION.test(o.lieu)))
+    .map((o) => { const [d, m, a] = o.date.split("-"); return { titre: o.titre, entreprise: o.entreprise, lieu: o.lieu, url: o.url, date: a ? new Date(`${a}-${m}-${d}`).toISOString() : "", source: "Cultive", profil: "carriere", resume: "" }; });
+}
+
+// Jobillico (recherche par mots-clés)
+async function jobillico(q, profil) {
+  const h = await (await obtenir(`https://www.jobillico.com/recherche-emploi?skwd=${encodeURIComponent(q)}&wloc=${encodeURIComponent("Montréal")}`)).text();
+  const ld = [...h.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).find((d) => d && d["@type"] === "ItemList");
+  return (ld?.itemListElement || []).map((it) => {
+    const url = String(it.url || "").split("?")[0];
+    const chemin = (() => { try { return new URL(url).pathname; } catch { return ""; } })();
+    const i = chemin ? h.indexOf(chemin) : -1;
+    const f = i >= 0 ? enChamps(h.slice(h.indexOf(">", i) + 1, i + 4000)).split("|").map((x) => x.trim()).filter(Boolean) : [];
+    const lieu = (f.find((x) => / - (QC|ON|NB)$/.test(x)) || "").replace(/ - (QC|ON|NB)$/, "");
+    return { titre: texte(it.name), entreprise: f[1] || "", lieu, url, date: "", source: "Jobillico", profil, resume: "" };
+  });
+}
+
+// Talent.com (agrégateur canadien) : les offres sont dans les données de la page, avec leur position.
+async function talent(q, profil) {
+  const h = (await (await obtenir(`https://ca.talent.com/fr/jobs?k=${encodeURIComponent(q)}&l=${encodeURIComponent("Montréal")}`)).text()).replace(/\\"/g, '"');
+  const vu = new Map();
+  for (const m of h.matchAll(/"id":"(\d{12,})","source_title":"((?:[^"\\]|\\.)*)"/g)) {
+    if (vu.has(m[1])) continue;
+    const seg = h.slice(m.index, m.index + 12000);
+    const g = (k) => jsonTexte((seg.match(new RegExp(`"${k}":"((?:[^"\\\\]|\\\\.)*)"`)) || [])[1] || "");
+    const n = (k) => Number((seg.match(new RegExp(`"${k}":(-?[0-9.]+)`)) || [])[1]);
+    const lat = n("enrich_geo_lat"), lon = n("enrich_geo_lon");
+    vu.set(m[1], { titre: texte(jsonTexte(m[2])), entreprise: g("enrich_company_name"), lieu: g("source_location").replace(/, ?ca$/i, ""), url: `https://ca.talent.com/fr/view?id=${m[1]}`, date: g("system_date_found"), source: "Talent.com", profil, resume: "", ...(Number.isFinite(lat) && Number.isFinite(lon) && lat ? { pos: { lat, lon } } : {}) });
+  }
+  return [...vu.values()];
+}
+
 async function collecter() {
   const taches = [
     ["Cirque du Soleil", () => lever("cirquedusoleil", "Cirque du Soleil")],
@@ -88,6 +148,12 @@ async function collecter() {
     ...["chargé de projets événementiel", "directeur de production", "gestionnaire de projets événements", "directeur des opérations", "coordonnateur de production"].map((q) => [`Guichet-Emplois : ${q}`, () => guichet(q, "carriere")]),
     ...["barman", "serveur banquet", "maître d'hôtel"].map((q) => [`Guichet-Emplois : ${q}`, () => guichet(q, "temporaire")]),
     ...["barman", "serveur", "banquet", "maître d'hôtel", "événements"].map((q) => [`Hôtellerie Jobs : ${q}`, () => hotellerie(q)]),
+    ["Grenier aux emplois", grenier],
+    ["Cultive", cultive],
+    ...["chargé de projets événementiel", "directeur de production spectacle", "gestionnaire de projets événements", "directeur des opérations festival"].map((q) => [`Jobillico : ${q}`, async () => (await jobillico(q, "carriere")).filter((o) => DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o))]),
+    ...["barman", "serveur banquet"].map((q) => [`Jobillico : ${q}`, async () => (await jobillico(q, "temporaire")).filter(pertinent)]),
+    ...["chargé de projets événements", "directeur de production", "gestionnaire de production spectacle", "coordonnateur de production événement"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "carriere")).filter((o) => DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o))]),
+    ...["barman", "serveur banquet"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "temporaire")).filter(pertinent)]),
     ...(process.env.JOOBLE_KEY ? [["Jooble carrière", () => jooble("directeur de production OR chargé de projets événementiel", "carriere")], ["Jooble temporaire", () => jooble("barman", "temporaire")]] : []),
   ];
   const res = await Promise.allSettled(taches.map(([, f]) => f()));
@@ -95,6 +161,7 @@ async function collecter() {
   const vu = new Set(); const offres = [];
   res.forEach((r) => { if (r.status === "fulfilled") r.value.forEach((o) => { if (!o.url || vu.has(o.url)) return; vu.add(o.url); offres.push({ id: id(o.url), ...o }); }); });
   offres.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  for (let i = offres.length - 1; i >= 0; i--) if (!pasRapide(offres[i])) offres.splice(i, 1);
   return { offres, etat, maj: new Date().toISOString() };
 }
 
@@ -151,8 +218,8 @@ function placer(r, geo) {
     const trouve = ce.map((k) => geo[k]).find((g) => g && g.lat && proche(g));
     const essaye = ce.length === 0 || ce.every((k) => geo[k]);
     const gv = geo[cleVille(o)];
-    if (!essaye || !gv) attente++;
-    const g = trouve ? { lat: trouve.lat, lon: trouve.lon, precis: "entreprise" } : (gv && gv.lat ? { lat: gv.lat, lon: gv.lon, precis: "ville" } : null);
+    if (!o.pos && (!essaye || !gv)) attente++;
+    const g = o.pos ? { lat: o.pos.lat, lon: o.pos.lon, precis: "entreprise" } : trouve ? { lat: trouve.lat, lon: trouve.lon, precis: "entreprise" } : (gv && gv.lat ? { lat: gv.lat, lon: gv.lon, precis: "ville" } : null);
     return { ...o, geo: g };
   });
   return { ...r, offres, geoAttente: attente };
@@ -164,8 +231,9 @@ async function localiser(r, geo, budgetMs = 18000) {
   const vu = new Set();
   // Les villes d'abord (tout le monde a au moins un point), puis les entreprises.
   r = { ...r, offres: r.offres.filter(pasRapide) };
-  for (const o of r.offres) { const k = cleVille(o); if (!geo[k] && !vu.has(k)) { vu.add(k); aFaire.push([k, `${villeDe(o.lieu)}, Québec`]); } }
+  for (const o of r.offres) { if (o.pos) continue; const k = cleVille(o); if (!geo[k] && !vu.has(k)) { vu.add(k); aFaire.push([k, `${villeDe(o.lieu)}, Québec`]); } }
   for (const o of r.offres) {
+    if (o.pos) continue; // déjà localisée par le site d'emploi
     const noms = nomsEntreprise(o.entreprise);
     noms.forEach((n, i) => { const k = clesEntreprise(o)[i]; if (!geo[k] && !vu.has(k)) { vu.add(k); aFaire.push([k, `${n}, ${villeDe(o.lieu)}`]); } });
   }
