@@ -17,6 +17,7 @@ function memCmd(args) {
     case "INCR": case "INCRBY": { const v = Number(get() || 0) + Number(r[0] || 1); mem.set(k, String(v)); return v; }
     case "EXPIRE": return 1;
     case "HINCRBY": { const h = get() || {}; h[r[0]] = (h[r[0]] || 0) + Number(r[1]); mem.set(k, h); return h[r[0]]; }
+    case "HSET": { const h = get() || {}; for (let i = 0; i < r.length; i += 2) h[r[i]] = r[i + 1]; mem.set(k, h); return 1; }
     case "HGETALL": { const h = get() || {}; return Object.entries(h).flat().map(String); }
     case "PFADD": { const s = get() || new Set(); r.forEach((x) => s.add(x)); mem.set(k, s); return 1; }
     case "PFCOUNT": { const u = new Set(); [k, ...r].forEach((x) => (mem.get(x) || new Set()).forEach((v) => u.add(v))); return u.size; }
