@@ -528,3 +528,8 @@ body::after { content: ""; position: fixed; inset: -60%; z-index: 70; pointer-ev
   body::after, .defile .piste, .hero.lit img.hero-img { animation: none !important; }
   .anim .rv, .anim .rv-img { opacity: 1 !important; transform: none !important; clip-path: none !important; transition: none !important; }
 }
+
+/* Sélecteur de langue (FR / EN) */
+.nav ul li.langue a { font-size: .85rem; letter-spacing: .12em; opacity: .75; }
+.nav ul li.langue a:hover { opacity: 1; }
+@media (max-width: 960px) { .nav ul li.langue a { font-size: 1.4rem; } }

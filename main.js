@@ -20,7 +20,7 @@
     menuBtn.addEventListener('click', function () {
       var ouvert = nav.classList.toggle('ouvert');
       menuBtn.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
-      menuBtn.textContent = ouvert ? 'Fermer' : 'Menu';
+      menuBtn.textContent = ouvert ? (document.documentElement.lang.indexOf('en') === 0 ? 'Close' : 'Fermer') : 'Menu';
       document.body.style.overflow = ouvert ? 'hidden' : '';
     });
     nav.querySelectorAll('ul a').forEach(function (a) {
