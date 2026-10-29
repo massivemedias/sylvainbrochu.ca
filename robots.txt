@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
+Allow: /api/cv/
+Disallow: /admin/
+Disallow: /api/
 
 Sitemap: https://www.sylvainbrochu.ca/sitemap.xml

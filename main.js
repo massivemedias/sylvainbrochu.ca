@@ -133,3 +133,29 @@
   var annee = document.getElementById('annee');
   if (annee) annee.textContent = new Date().getFullYear();
 })();
+
+// Mesure d'audience du site (sans témoin) : pages vues, téléchargements du CV, messages du formulaire.
+(function () {
+  try {
+    var ref = document.referrer, arrivee = 1;
+    try { arrivee = !ref || new URL(ref).host !== location.host ? 1 : 0; } catch (e) { arrivee = 1; }
+    var utm = new URLSearchParams(location.search).get('utm_source') || '';
+    var envoyer = function (o) {
+      var b = JSON.stringify(o);
+      if (navigator.sendBeacon) navigator.sendBeacon('/api/stats/', new Blob([b], { type: 'text/plain' }));
+      else fetch('/api/stats/', { method: 'POST', body: b, keepalive: true });
+    };
+    envoyer({ e: 'vue', p: location.pathname, r: ref, n: arrivee, u: utm });
+    var debut = Date.now();
+    var signal = setInterval(function () {
+      if (Date.now() - debut > 6 * 60000) return clearInterval(signal);
+      if (document.visibilityState === 'visible') envoyer({ e: 'ping', p: location.pathname });
+    }, 45000);
+    document.addEventListener('click', function (ev) {
+      var a = ev.target.closest && ev.target.closest('.dl-cv');
+      if (a) envoyer({ e: 'cv', p: location.pathname });
+    });
+    var f = document.querySelector('form.formulaire');
+    if (f) f.addEventListener('submit', function () { envoyer({ e: 'contact', p: location.pathname }); });
+  } catch (e) { /* la mesure ne doit jamais gêner le site */ }
+})();

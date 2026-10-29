@@ -6,8 +6,25 @@
       "source": "/merci.html",
       "destination": "/merci/",
       "permanent": true
+    },
+    {
+      "source": "/cv/sylvain-brochu-cv.pdf",
+      "destination": "/api/cv/?v=carriere",
+      "permanent": false
     }
   ],
+  "functions": {
+    "api/courriels.js": {
+      "maxDuration": 60,
+      "includeFiles": "api/_fichiers/**"
+    },
+    "api/cv.js": {
+      "includeFiles": "api/_fichiers/**"
+    },
+    "api/offres.js": {
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -37,6 +54,23 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/admin/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
         }
       ]
     }
