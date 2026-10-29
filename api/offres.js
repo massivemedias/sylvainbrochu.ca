@@ -25,7 +25,7 @@ const entites = (s) => String(s || "").replace(/&([a-zA-Z]+);/g, (t, n) => (n in
 const texte = (s) => entites(entites(String(s || "").replace(/<!\[CDATA\[|\]\]>/g, "")).replace(/<[^>]+>/g, " ")).replace(/<[^>]+>/g, " ").replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ").trim();
 
 async function obtenir(url, opts = {}) {
-  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 9000);
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), opts.delai || 9000);
   try {
     const r = await fetch(url, { ...opts, signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; sylvainbrochu.ca veille)", Accept: "*/*", ...(opts.headers || {}) } });
     if (!r.ok) throw new Error(`${r.status} ${url}`);
@@ -58,7 +58,8 @@ async function teamtailor(compte, entreprise) {
 
 async function guichet(q, profil) {
   const u = `https://www.guichetemplois.gc.ca/jobsearch/feed/jobSearchRSSfeed?searchstring=${encodeURIComponent(q)}&locationstring=${encodeURIComponent("Montréal, QC")}&sort=D`;
-  const x = await (await obtenir(u)).text();
+  let x;
+  try { x = await (await obtenir(u, { delai: 15000 })).text(); } catch { x = await (await obtenir(u, { delai: 15000 })).text(); }
   return [...x.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((m) => {
     const e = m[1];
     const titre = texte((e.match(/<title[^>]*>([\s\S]*?)<\/title>/) || [])[1]);
@@ -138,7 +139,10 @@ async function talent(q, profil) {
     const g = (k) => jsonTexte((seg.match(new RegExp(`"${k}":"((?:[^"\\\\]|\\\\.)*)"`)) || [])[1] || "");
     const n = (k) => Number((seg.match(new RegExp(`"${k}":(-?[0-9.]+)`)) || [])[1]);
     const lat = n("enrich_geo_lat"), lon = n("enrich_geo_lon");
-    vu.set(m[1], { titre: texte(jsonTexte(m[2])), entreprise: g("enrich_company_name"), lieu: g("source_location").replace(/, ?ca$/i, ""), url: `https://ca.talent.com/fr/view?id=${m[1]}`, date: g("system_date_found"), source: "Talent.com", profil, resume: "", ...(Number.isFinite(lat) && Number.isFinite(lon) && lat ? { pos: { lat, lon } } : {}) });
+    const smin = n("enrich_salary_min"), smax = n("enrich_salary_max"), stype = g("enrich_salary_type");
+    const unite = { year: "par année", yearly: "par année", hour: "de l'heure", hourly: "de l'heure", week: "par semaine", month: "par mois" }[stype] || "";
+    const salaire = smin > 0 || smax > 0 ? `${[smin, smax].filter((v) => v > 0).map((v) => v.toLocaleString("fr-CA")).join(" $ à ")} $ ${unite}`.trim() : "";
+    vu.set(m[1], { titre: texte(jsonTexte(m[2])), entreprise: g("enrich_company_name"), lieu: g("source_location").replace(/, ?ca$/i, ""), url: `https://ca.talent.com/fr/view?id=${m[1]}`, date: g("system_date_found"), source: "Talent.com", profil, resume: texte(entites(g("enrich_salary_snippet"))).slice(0, 260), salaire, ...(Number.isFinite(lat) && Number.isFinite(lon) && lat ? { pos: { lat, lon } } : {}) });
   }
   return [...vu.values()];
 }
@@ -263,9 +267,9 @@ async function collecter() {
     ["Grenier aux emplois", grenier],
     ["Cultive", cultive],
     ...["chargé de projets événementiel", "directeur de production spectacle", "gestionnaire de projets événements", "directeur des opérations festival"].map((q) => [`Jobillico : ${q}`, async () => (await jobillico(q, "carriere")).filter((o) => DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o))]),
-    ...["barman", "serveur banquet"].map((q) => [`Jobillico : ${q}`, async () => (await jobillico(q, "temporaire")).filter(pertinent)]),
+    ...["barman", "serveur banquet"].map((q) => [`Jobillico : ${q}`, async () => (await jobillico(q, "temporaire")).filter((o) => TEMPO.test(o.titre) && pertinent(o))]),
     ...["chargé de projets événements", "directeur de production", "gestionnaire de production spectacle", "coordonnateur de production événement"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "carriere")).filter((o) => DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o))]),
-    ...["barman", "serveur banquet"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "temporaire")).filter(pertinent)]),
+    ...["barman", "serveur banquet"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "temporaire")).filter((o) => TEMPO.test(o.titre) && pertinent(o))]),
     ["CQT (théâtre)", cqt],
     ["Eluta (sites carrières des employeurs)", () => enReserve("eluta2", 12, async () => {
       const l = [];
@@ -280,7 +284,9 @@ async function collecter() {
   const vu = new Set(); const offres = [];
   res.forEach((r) => { if (r.status === "fulfilled") r.value.forEach((o) => { if (!o.url || vu.has(o.url)) return; vu.add(o.url); offres.push({ id: id(o.url), ...o }); }); });
   offres.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-  for (let i = offres.length - 1; i >= 0; i--) if (!pasRapide(offres[i])) offres.splice(i, 1);
+  // Offres périmées (plus de 75 jours) et restauration rapide écartées.
+  const limite = Date.now() - 75 * 864e5;
+  for (let i = offres.length - 1; i >= 0; i--) if (!pasRapide(offres[i]) || (offres[i].date && Date.parse(offres[i].date) < limite)) offres.splice(i, 1);
   return { offres, etat, maj: new Date().toISOString() };
 }
 
@@ -368,6 +374,70 @@ async function localiser(r, geo, budgetMs = 18000) {
   return geo;
 }
 
+// ---------- Salaire : texte de l'offre -> fourchette annuelle en $ CA ----------
+// « 55 000,00 $ par année », « 80 000$ à 120 000$ », « 26,50 $ de l'heure », « 70k », « 1 200 $ par semaine »...
+const HEURES_AN = 1950; // 37,5 h par semaine
+export function salaireAnnuel(s) {
+  const t = String(s || "").toLowerCase().replace(/[\u00a0\u202f]/g, " ");
+  if (!/\d/.test(t)) return null;
+  const nums = [];
+  for (const m of t.matchAll(/(\d{1,3}(?:[ ,.]\d{3})+|\d+)(?:[.,](\d{1,2}))?(?!\d)\s*(k\b)?/g)) {
+    let n = Number(m[1].replace(/[ ,.]/g, ""));
+    if (m[2]) n += Number("0." + m[2]);
+    if (m[3]) n *= 1000;
+    if (n > 0 && n < 1e7) nums.push(n);
+  }
+  if (!nums.length) return null;
+  const min = Math.min(...nums.slice(0, 2)), max = Math.max(...nums.slice(0, 2));
+  let unite = /(heure|hour|horaire|\/\s*h\b|\bhr\b|\bh\b)/.test(t) ? "heure" : /(semaine|week)/.test(t) ? "semaine" : /(mois|month)/.test(t) ? "mois" : /(ann[ée]e|annuel|\ban\b|year)/.test(t) ? "an" : "";
+  if (!unite) unite = max < 200 ? "heure" : max > 15000 ? "an" : "";
+  if (!unite) return null;
+  const f = { heure: HEURES_AN, semaine: 52, mois: 12, an: 1 }[unite];
+  const r = { min: Math.round(min * f), max: Math.round(max * f), unite };
+  return r.max >= 15000 && r.max <= 600000 ? r : null;
+}
+const avecSalaire = (o) => ({ ...o, sal: salaireAnnuel(o.salaire) });
+// Salaire écrit dans le texte de l'offre (« Salaire : 54 600 $ à 65 520 $ par année », « $36-41/heure »...)
+const NB = String.raw`\d{1,3}(?:[ \u00a0\u202f.,]?\d{3})*(?:[.,]\d{1,2})?`;
+const MOTIFS_SALAIRE = [
+  new RegExp(String.raw`(${NB})\s*\$?\s*(?:à|-|to|et)\s*(${NB})\s*\$\s*(?:CAD\s*)?(?:par|\/|de\s+l.|per|annuel|year|an\b)[^\n]{0,14}`, "i"),
+  new RegExp(String.raw`\$\s*(${NB})\s*(?:-|à|to)\s*\$?\s*(${NB})\s*(?:k\b)?\s*(?:\/|par|per|an|ann)[^\n]{0,10}`, "i"),
+  new RegExp(String.raw`(${NB})\s*\$\s*(?:CAD\s*)?(?:par|\/|de\s+l.|per)\s*(?:ann[ée]e|an\b|heure|hour|h\b|semaine|mois|year)`, "i"),
+];
+function salaireDansTexte(txt) {
+  const s = String(txt || "").replace(/\s+/g, " ");
+  for (const re of MOTIFS_SALAIRE) { const m = s.match(re); if (m && salaireAnnuel(m[0])) return m[0].trim(); }
+  return "";
+}
+const propre = (s) => texte(String(s || "")).replace(/\s+/g, " ").trim();
+
+// Lecture des offres une à une (texte, salaire, date limite, façon de postuler), gardée avec les offres.
+// Appelée par l'admin (?enrichir=1) tant qu'il en reste, et par la tâche planifiée après chaque collecte.
+async function enrichir(budgetMs = 20000) {
+  const debut = Date.now();
+  let r = null; try { r = JSON.parse((await cmd("GET", CACHE_OFFRES)) || "null"); } catch { r = null; }
+  if (!r) return null;
+  const aLire = r.offres.filter((o) => !o.lu).slice(0, 60);
+  const faits = new Map(); let i = 0;
+  const ouvrier = async () => {
+    while (i < aLire.length && Date.now() - debut < budgetMs) {
+      const o = aLire[i++];
+      try {
+        const d = await detailOffre(o.url, o.titre);
+        faits.set(o.id, { lu: 1, salaire: o.salaire || d.salaire || salaireDansTexte(d.description), echeance: d.echeance || "", methode: d.methode || "", contrat: o.contrat || d.contrat || "", resume: o.resume || (d.origine === "donnees" ? propre(d.description).slice(0, 240) : "") });
+      } catch { faits.set(o.id, { lu: 2 }); }
+    }
+  };
+  await Promise.all([ouvrier(), ouvrier(), ouvrier(), ouvrier()]);
+  if (!faits.size) return r;
+  let r2 = null; try { r2 = JSON.parse((await cmd("GET", CACHE_OFFRES)) || "null"); } catch { r2 = null; }
+  r2 = r2 || r;
+  r2.offres = r2.offres.map((o) => (faits.has(o.id) ? avecSalaire({ ...o, ...faits.get(o.id) }) : o));
+  await cmd("SET", CACHE_OFFRES, JSON.stringify(r2), "EX", 14 * 86400);
+  return r2;
+}
+const resteALire = (r) => r.offres.filter((o) => !o.lu).length;
+
 // Le dernier résultat est gardé 14 jours : l'admin l'affiche tout de suite, puis demande une mise à jour
 // en arrière-plan quand il a plus d'une heure (?rafraichir=1). Un verrou évite deux collectes en même temps.
 const CACHE_OFFRES = "sb:cache:offres";
@@ -380,6 +450,11 @@ async function offresEnCache(rafraichir) {
   if (!verrou && cache) return cache; // une collecte est déjà en cours
   try {
     const r = await collecter();
+    const anciens = new Map((cache?.offres || []).filter((o) => o.lu).map((o) => [o.id, o]));
+    r.offres = r.offres.map((o) => {
+      const a = anciens.get(o.id);
+      return avecSalaire(a ? { ...o, lu: a.lu, salaire: o.salaire || a.salaire || "", echeance: a.echeance || "", methode: a.methode || "", contrat: o.contrat || a.contrat || "", resume: o.resume || a.resume || "" } : o);
+    });
     await cmd("SET", CACHE_OFFRES, JSON.stringify(r), "EX", 14 * 86400);
     return r;
   } finally { try { await cmd("DEL", "sb:verrou:offres"); } catch { /* le verrou expire seul */ } }
@@ -501,14 +576,18 @@ function estCron(req) {
 export default async function handler(req, res) {
   try {
     if (req.method === "GET" && estCron(req)) {
-      const r = await offresEnCache(true);
-      return json(res, 200, { ok: true, offres: r.offres.length, maj: r.maj });
+      const debut = Date.now();
+      let r = await offresEnCache(true);
+      r = (await enrichir(Math.max(5000, 38000 - (Date.now() - debut)))) || r;
+      return json(res, 200, { ok: true, offres: r.offres.length, aLire: resteALire(r), maj: r.maj });
     }
     const u = await exiger(req, res); if (!u) return;
     if (req.method !== "GET") return json(res, 405, { erreur: "Méthode non permise" });
     const q = parametres(req);
     if (q.get("detail")) return json(res, 200, await detailOffre(q.get("detail"), q.get("titre") || ""));
-    const r = await offresEnCache(q.get("rafraichir") === "1");
+    let r = await offresEnCache(q.get("rafraichir") === "1");
+    if (q.get("enrichir") === "1") r = (await enrichir(20000)) || r;
+    r = { ...r, aLire: resteALire(r) };
     let geo = await lireGeo();
     if (q.get("geo") === "1") geo = await localiser(r, geo);
     return json(res, 200, placer(r, geo));

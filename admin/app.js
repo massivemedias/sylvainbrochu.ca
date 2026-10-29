@@ -38,6 +38,46 @@ function estNouvelle(o) {
   if (VUES.premiere) return o.date ? Date.now() - Date.parse(o.date) < 3 * 86400e3 : false;
   return !VUES.ids.has(o.id);
 }
+// ---------- Classement des offres : poste, milieu, salaire, fraîcheur ----------
+// Les offres carrière sous 60 000 $ par an (salaire connu) sont classées à part, en bas.
+const SEUIL_SALAIRE = 60000;
+const ROLE_FORT = /(directeur|directrice|direction|gestionnaire|chef de projets?|charg[ée]?\S*\s+de projets?|producteur|productrice|responsable des op[ée]rations|production manager|project manager|operations manager|head of production)/i;
+const ROLE_MOYEN = /(coordonnat|responsable|superviseur|r[ée]gisseu|chef d.[ée]quipe|chef de d[ée]partement|chef\.fe)/i;
+const ROLE_FAIBLE = /(adjoint|assistant|agent\b|agente|stagiaire|technicien|commis|pr[ée]pos[ée]|aide-|aide )/i;
+const MILIEU = /(événement|evenement|évènement|event|spectacle|scène|scene|tournée|tournee|festival|exposition|musée|musee|muséal|scénograph|scenograph|théâtre|theatre|cirque|immersi|divertissement|entertainment|décor|decor|accessoir|sur mesure|fabrication|production audiovisuelle)/i;
+const MILIEU_FAIBLE = /(cultur|arts?\b|diffusion|studio|atelier|installation|programmation)/i;
+const HORS_MILIEU = /(alimentaire|usine|manufactur|construction|civil|g[ée]nie|financ|banque|bancaire|fiscal|comptab|informatique|logiciel|\bTI\b|pharma|chimique|plastique|m[ée]tal|entrep[ôo]t|transport routier|immobili|assurance)/i;
+const TEMPO_FORT = /(barman|barmaid|bartender|mixolog|banquet|ma[îi]tre d.h[ôo]tel|sommelier)/i;
+const sous60 = (o) => o.profil !== "temporaire" && o.sal && o.sal.max && o.sal.max < SEUIL_SALAIRE;
+const joursDepuis = (iso) => (iso ? (Date.now() - Date.parse(iso)) / 864e5 : null);
+function pertinence(o) {
+  const titre = `${o.titre || ""}`, ent = `${o.entreprise || ""}`, tout = `${titre} ${ent} ${o.resume || ""}`;
+  let s = 0;
+  const j = joursDepuis(o.date);
+  if (j !== null && !Number.isNaN(j)) s += j <= 3 ? 2 : j <= 7 ? 1 : j > 30 ? -1 : 0;
+  if (estNouvelle(o)) s += 1;
+  if (o.echeance && o.echeance < jour()) s -= 6;
+  if (o.methode === "courriel") s += 0.5;
+  if (o.profil === "temporaire") return s + (TEMPO_FORT.test(titre) ? 2 : /serveu/i.test(titre) ? 1 : 0) - 1;
+  s += ROLE_FORT.test(titre) ? 4 : ROLE_MOYEN.test(titre) ? 2 : 0;
+  if (ROLE_FAIBLE.test(titre)) s -= 2;
+  s += MILIEU.test(`${titre} ${ent}`) ? 3 : MILIEU_FAIBLE.test(`${titre} ${ent}`) || MILIEU.test(o.resume || "") ? 1 : 0;
+  if (HORS_MILIEU.test(tout) && !MILIEU.test(`${titre} ${ent}`)) s -= 4;
+  if (o.sal && o.sal.max) s += o.sal.max >= 90000 ? 3 : o.sal.max >= 75000 ? 2 : o.sal.max >= SEUIL_SALAIRE ? 1 : -6;
+  return s;
+}
+const niveau = (o, s = pertinence(o)) => (o.profil === "temporaire" ? "" : s >= 8 && ROLE_FORT.test(o.titre || "") ? "Très intéressante" : s >= 5 ? "Intéressante" : "");
+const fmtArgent = (n) => `${Math.round(n / 1000)} k$`;
+function salaireCourt(o) {
+  if (!o.sal) return o.salaire || "";
+  const { min, max, unite } = o.sal;
+  if (unite === "heure" && o.profil === "temporaire") return o.salaire;
+  return `${min !== max ? fmtArgent(min) + " à " : ""}${fmtArgent(max)} par an${unite !== "an" ? " (estimé)" : ""}`;
+}
+function trierOffres(l) {
+  const sc = new Map(l.map((o) => [o.id, pertinence(o)]));
+  return l.slice().sort((a, b) => sc.get(b.id) - sc.get(a.id) || String(b.date || "").localeCompare(String(a.date || "")));
+}
 function noterVues(offres) {
   try {
     const avant = JSON.parse(localStorage.getItem("sb-offres-vues") || "null");
@@ -220,7 +260,7 @@ function majCompteurs() {
   const el = $('[data-c="tableau"]'); if (el) { el.hidden = !n; el.textContent = n; }
   const nl = (etat.boite.listes.recus || []).filter((m) => !m.lu).length;
   const em = $('[data-c="courriels"]'); if (em) { em.hidden = !nl; em.textContent = nl; }
-  const no = etat.offres ? etat.offres.offres.filter((o) => estNouvelle(o) && !(etat.d["offres-masquees"] || []).includes(o.id)).length : 0;
+  const no = etat.offres ? etat.offres.offres.filter((o) => estNouvelle(o) && !sous60(o) && !(etat.d["offres-masquees"] || []).includes(o.id)).length : 0;
   const eo = $('[data-c="offres"]'); if (eo) { eo.hidden = !no; eo.textContent = no; eo.title = `${no} nouvelle${no > 1 ? "s" : ""} offre${no > 1 ? "s" : ""}`; }
 }
 function allerA() {
@@ -268,7 +308,7 @@ async function chargerOffres(force = false) {
   if (!force && etat.offres) return etat.offres;
   if (force) { await mettreAJourOffres(true); return etat.offres; }
   etat.offres = await api("/api/offres/");
-  if (Date.now() - Date.parse(etat.offres.maj) > 3600e3) mettreAJourOffres();
+  if (Date.now() - Date.parse(etat.offres.maj) > 3600e3) mettreAJourOffres(); else if (etat.offres.aLire > 0) enrichirOffres();
   return etat.offres;
 }
 let majOffresEnCours = null;
@@ -277,8 +317,9 @@ function mettreAJourOffres(attendre = false) {
     etat.offresMaj = "en-cours"; afficherEtatOffres();
     majOffresEnCours = api("/api/offres/?rafraichir=1").then((r) => {
       const avant = new Set((etat.offres?.offres || []).map((o) => o.id));
-      const neuves = r.offres.filter((o) => !avant.has(o.id)).length;
+      const neuves = r.offres.filter((o) => !avant.has(o.id) && !sous60(o)).length;
       etat.offres = r; etat.offresMaj = "";
+      if (r.aLire > 0) enrichirOffres();
       if (avant.size && neuves) toast(`${neuves} nouvelle${neuves > 1 ? "s" : ""} offre${neuves > 1 ? "s" : ""} pour moi.`);
       if (etat.page === "offres") listerOffres(); else if (etat.page === "tableau") offresAccueil();
       majCompteurs();
@@ -291,7 +332,27 @@ function afficherEtatOffres() {
   const o = etat.offres;
   el.innerHTML = etat.offresMaj === "en-cours" ? `<span class="tourne"></span> Je cherche les nouvelles offres...`
     : etat.offresMaj === "erreur" ? `Mise à jour impossible pour l'instant. Offres du ${o ? dateHeure(o.maj) : ""}.`
-    : o ? `Mises à jour ${ilYa(Date.parse(o.maj))}, sur ${o.etat.filter((x) => x.ok).length} recherches.` : "";
+    : enrichissementEnCours && o?.aLire ? `<span class="tourne"></span> Je lis les offres une à une pour le salaire et la façon de postuler (${o.aLire} restantes)...`
+    : o ? `Mises à jour ${ilYa(Date.parse(o.maj))}, ${o.etat.filter((x) => x.ok).length} recherches sur ${o.etat.length} réussies.` : "";
+}
+// Lecture des offres une à une côté serveur (salaire, date limite, courriel ou site), par lots, en arrière-plan.
+let enrichissementEnCours = false;
+async function enrichirOffres() {
+  if (enrichissementEnCours) return; enrichissementEnCours = true; afficherEtatOffres();
+  try {
+    for (let i = 0; i < 8 && etat.offres?.aLire > 0; i++) {
+      const avant = etat.offres.aLire;
+      const r = await api("/api/offres/?enrichir=1");
+      etat.offres = { ...r, offres: r.offres.map((o) => ({ ...o, geo: o.geo || (etat.offres.offres.find((x) => x.id === o.id) || {}).geo })) };
+      afficherEtatOffres();
+      if (r.aLire >= avant) break; // plus rien ne se lit pour l'instant
+    }
+  } catch { /* on réessaiera à la prochaine visite */ } finally {
+    enrichissementEnCours = false; afficherEtatOffres();
+    const lecture = $$(".detail-offre").some((d) => !d.hidden);
+    if (etat.page === "offres" && !lecture) listerOffres(); else if (etat.page === "tableau") offresAccueil();
+    majCompteurs();
+  }
 }
 
 // ---------- Graphique ----------
@@ -399,10 +460,10 @@ function offresAccueil() {
   const masq = new Set(etat.d["offres-masquees"] || []);
   const liees = new Set((etat.d.candidatures || []).map((c) => c.lien).filter(Boolean));
   const dispo = etat.offres.offres.filter((x) => !masq.has(x.id) && !liees.has(x.url));
-  const neuves = dispo.filter(estNouvelle).sort((a, b) => (a.profil === "carriere" ? 0 : 1) - (b.profil === "carriere" ? 0 : 1));
-  const l = (neuves.length ? neuves : dispo).slice(0, 5);
-  el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} depuis ma dernière visite.</p>` : `<p class="aide">Pas de nouvelle offre depuis ma dernière visite. Les plus récentes :</p>`)
-    + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
+  const neuves = trierOffres(dispo.filter((x) => estNouvelle(x) && !sous60(x)));
+  const l = (neuves.length ? neuves : trierOffres(dispo.filter((x) => !sous60(x)))).slice(0, 5);
+  el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} depuis ma dernière visite.</p>` : `<p class="aide">Pas de nouvelle offre depuis ma dernière visite. Les plus intéressantes :</p>`)
+    + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : salaireCourt(x) || "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
 }
 function commentPostuler() {
   let ferme = false; try { ferme = localStorage.getItem("sb-mode-emploi") === "ferme"; } catch { /* stockage indisponible */ }
@@ -946,6 +1007,7 @@ function pOffres() {
   <details class="carte plus-loin"><summary><h2>Chercher moi-même sur d'autres sites</h2><span class="aide">Indeed, LinkedIn, Guichet-Emplois</span></summary>
     <div class="liens-rapides">${["carriere", "temporaire"].map((p) => `<div class="groupe"><h4>${p === "carriere" ? "Carrière" : "Bar et service"}</h4>${RECHERCHES[p].map((q) => `<div style="margin-bottom:6px"><b style="font-size:.84rem">${E(q)}</b><br>${SITES.filter(([n]) => p === "temporaire" || n !== "Hôtellerie Jobs").map(([n, f]) => `<a href="${E(f(q))}" target="_blank" rel="noopener" style="display:inline;margin-right:8px">${n}</a>`).join("")}</div>`).join("")}</div>`).join("")}</div>
     <p class="aide" style="margin-top:10px">Indeed et LinkedIn ne laissent pas lire leurs offres automatiquement : ces liens ouvrent leurs recherches, les plus récentes d'abord. Si je trouve une offre, « J'ajoute une offre trouvée ailleurs ».</p></details>
+  <details class="carte plus-loin"><summary><h2>Les sites lus pour moi</h2><span class="aide" id="sources-resume"></span></summary><div id="sources-off"><p class="vide">Chargement...</p></div></details>
   <details class="carte plus-loin"><summary><h2>Mes profils sur les sites d'emploi</h2><span class="aide">${(etat.d.plateformes || []).filter((p) => p.profilCree).length}/${(etat.d.plateformes || []).length} faits</span></summary>
     <p class="aide">Je crée mon compte sur chaque site et j'y mets mon CV, puis je coche ici.</p>
     <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${p.profil === "barman" ? "barman" : "carrière"}</small></div>
@@ -962,25 +1024,42 @@ async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), for
   try { o = await chargerOffres(force); } catch (e) { el.innerHTML = `<p class="vide">Je n'arrive pas à charger les offres pour l'instant (${E(e.message)}). <button class="btn petit" data-act="rafraichir-offres">Réessayer</button></p>`; return; }
   if (etat.page !== "offres") return;
   afficherEtatOffres();
-  const sauvees = (etat.d["offres-sauvees"] || []).map((x) => ({ ...x, sauvee: true }));
+  const sauvees = (etat.d["offres-sauvees"] || []).map((x) => ({ ...x, sauvee: true, sal: x.sal || null }));
   const toutes = [...sauvees, ...o.offres.filter((x) => !masq.has(x.id))];
-  const FILTRES = [["tous", "Toutes", () => true], ["nouvelles", "Nouvelles", estNouvelle], ["carriere", "Carrière", (x) => x.profil === "carriere"], ["temporaire", "Bar et service", (x) => x.profil === "temporaire"], ["sauvees", "Ajoutées par moi", (x) => x.sauvee]];
+  const FILTRES = [["tous", "Toutes", (x) => !sous60(x)], ["nouvelles", "Nouvelles", (x) => estNouvelle(x) && !sous60(x)], ["carriere", "Carrière", (x) => x.profil === "carriere" && !sous60(x)], ["temporaire", "Bar et service", (x) => x.profil === "temporaire"], ["sauvees", "Ajoutées par moi", (x) => x.sauvee]];
   const f = FILTRES.find((x) => x[0] === etat.profilOffres) || FILTRES[0];
   $("#filtres-off").innerHTML = FILTRES.map(([k, n, fn]) => `<button type="button" data-profil="${k}" aria-pressed="${k === f[0]}">${n} <b>${toutes.filter(fn).length}</b></button>`).join("");
-  let l = toutes.filter(f[2]);
   const q = etat.rechOffres.toLowerCase();
-  if (q) l = l.filter((x) => `${x.titre} ${x.entreprise} ${x.lieu} ${x.resume}`.toLowerCase().includes(q));
-  l.sort((a, b) => (estNouvelle(b) ? 1 : 0) - (estNouvelle(a) ? 1 : 0) || String(b.date || "").localeCompare(String(a.date || "")));
+  const cherche = (x) => !q || `${x.titre} ${x.entreprise} ${x.lieu} ${x.resume}`.toLowerCase().includes(q);
+  const l = trierOffres(toutes.filter(f[2]).filter(cherche));
+  const bas = ["tous", "carriere", "nouvelles"].includes(f[0]) ? trierOffres(toutes.filter((x) => sous60(x) && (f[0] !== "nouvelles" || estNouvelle(x))).filter(cherche)) : [];
   const liees = new Map((etat.d.candidatures || []).filter((c) => c.lien).map((c) => [c.lien, c]));
   if ($("#det-carte")?.open) { etat.carteCadree = false; majCarte(l); if (o.geoAttente > 0) localiserOffres(); }
-  el.innerHTML = l.length ? l.map((x) => { const c = liees.get(x.url); const neuve = estNouvelle(x); return `<article class="offre${neuve ? " neuve" : ""}"><div>
+  const carte = (x) => {
+    const c = liees.get(x.url); const neuve = estNouvelle(x); const s = pertinence(x); const niv = niveau(x, s); const sal = salaireCourt(x);
+    return `<article class="offre${neuve ? " neuve" : ""}${niv === "Très intéressante" ? " top" : ""}"><div>
       <h3>${neuve ? `<span class="pastille p-neuve">Nouvelle</span> ` : ""}<a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.titre)}</a></h3>
-      <div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.salaire ? `<span>${E(x.salaire)}</span>` : ""}${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}<span class="pastille ${x.profil === "temporaire" ? "p-brouillon" : "p-envoye"}">${x.profil === "temporaire" ? "Bar et service" : "Carrière"}</span></div></div>
+      <div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}${x.echeance ? `<span class="${ecart(jour(), x.echeance) <= 7 ? "ko-txt" : ""}">limite ${dateCourte(x.echeance)}</span>` : ""}</div>
+      <div class="m etiquettes">${niv ? `<span class="pastille p-top">${niv}</span>` : ""}${sal ? `<span class="pastille ${sous60(x) ? "p-bas" : "p-salaire"}" title="${E(x.salaire || "")}">${E(sal)}</span>` : x.profil !== "temporaire" ? `<span class="pastille p-sans">Salaire non indiqué</span>` : ""}${x.methode === "courriel" ? `<span class="pastille p-envoye">Par courriel</span>` : x.methode === "site" ? `<span class="pastille p-brouillon">Sur le site</span>` : ""}<span class="pastille">${x.profil === "temporaire" ? "Bar et service" : "Carrière"}</span></div></div>
     <div class="actions">${c ? `<button class="btn petit" data-act="fiche" data-id="${c.id}">Dans mes candidatures</button>` : `<button class="btn laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button>`}<button class="btn petit" data-act="lire-offre" data-oid="${x.id}">Lire l'offre</button>${x.sauvee ? `<button class="btn petit lien danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}" title="Je ne verrai plus cette offre">Pas pour moi</button>`}</div>
-    ${x.resume ? `<p>${E(x.resume)}</p>` : ""}<div class="detail-offre" id="det-${x.id}" hidden></div></article>`; }).join("")
-    : `<p class="vide">${f[0] === "nouvelles" ? "Pas de nouvelle offre depuis ma dernière visite." : f[0] === "sauvees" ? "Je n'ai pas encore ajouté d'offre moi-même." : "Aucune offre ici."}</p>`;
-  el._offres = l;
+    ${x.resume ? `<p>${E(x.resume)}</p>` : ""}<div class="detail-offre" id="det-${x.id}" hidden></div></article>`;
+  };
+  el.innerHTML = (l.length ? `<p class="aide tri">Classées de la plus intéressante à la moins intéressante pour moi : le poste, le milieu, le salaire et la fraîcheur de l'offre.</p>` + l.map(carte).join("")
+    : `<p class="vide">${f[0] === "nouvelles" ? "Pas de nouvelle offre depuis ma dernière visite." : f[0] === "sauvees" ? "Je n'ai pas encore ajouté d'offre moi-même." : "Aucune offre ici."}</p>`)
+    + (bas.length ? `<details class="carte plus-loin bas60"><summary><h2>Sous 60 000 $ par an</h2><span class="aide">${bas.length} offre${bas.length > 1 ? "s" : ""} carrière, mise${bas.length > 1 ? "s" : ""} à part</span></summary><div class="offres">${bas.map(carte).join("")}</div></details>` : "");
+  el._offres = [...l, ...bas];
   noterVues(o.offres);
+  sourcesLues(o);
+}
+// Les sites lus pour moi, avec le nombre d'offres trouvées et les erreurs.
+function sourcesLues(o) {
+  const el = $("#sources-off"); if (!el || !o.etat) return;
+  const groupes = new Map();
+  o.etat.forEach((s) => { const nom = s.source.split(" : ")[0]; const g = groupes.get(nom) || { nom, ok: 0, ko: 0, n: 0, erreurs: [] }; s.ok ? g.ok++ : (g.ko++, g.erreurs.push(s.erreur)); g.n += s.nombre || 0; groupes.set(nom, g); });
+  const l = [...groupes.values()];
+  $("#sources-resume").textContent = `${l.filter((g) => g.ok).length} sites sur ${l.length} lus, ${o.etat.filter((s) => s.ok).length} recherches sur ${o.etat.length}`;
+  el.innerHTML = `<ul class="liste">${l.map((g) => `<li><div class="t"><b>${E(g.nom)}</b><small>${g.ok + g.ko > 1 ? `${g.ok + g.ko} recherches` : "1 recherche"}${g.ko ? ` | ${g.ko} en échec : ${E(g.erreurs[0] || "")}` : ""}</small></div><span class="${g.ok ? (g.ko ? "aide" : "ok-txt") : "ko-txt"}">${g.ok ? `${g.n} offre${g.n > 1 ? "s" : ""}` : "Non lu"}</span></li>`).join("")}</ul>
+    <p class="aide" style="margin-top:8px">Les offres sont ensuite filtrées : grand Montréal, postes de gestion de mon milieu, sans restauration rapide. Indeed, LinkedIn, Glassdoor et Jobboom arrivent par leurs alertes courriel sur info@.</p>`;
 }
 // ---------- Carte des offres (MapLibre + fond OpenFreeMap « Liberty », style proche de Google Maps) ----------
 let carteLibPret = null;
