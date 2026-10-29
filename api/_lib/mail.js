@@ -50,7 +50,7 @@ async function connecter() {
 
 export const FILTRES = {
   recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu) OR subject:"Sylvain Brochu") -from:${INFO} -from:${UTILISATEUR} -label:sylvain-alertes -in:drafts -in:spam -in:trash`,
-  envoyes: `from:${INFO} -in:drafts -in:trash -subject:"attend ma réponse" -subject:"attendent ma réponse"`,
+  envoyes: `from:${INFO} -in:drafts -in:trash -subject:"attend ma réponse" -subject:"attendent ma réponse" -subject:"attend ta réponse" -subject:"attendent ta réponse"`,
   brouillons: `from:${INFO}`,
 };
 
@@ -399,17 +399,17 @@ export function texteRappel(liste, maintenant = Date.now()) {
   const qui = (x) => (x.de.nom ? `${x.de.nom}${x.entreprise ? ` (${x.entreprise.split(" (")[0]})` : ""}` : x.entreprise ? x.entreprise.split(" (")[0] : x.de.courriel);
   const age = (iso) => { const h = Math.max(1, Math.round((maintenant - Date.parse(iso)) / 3600e3)); return h < 24 ? `${h} h` : `${Math.round(h / 24)} jour${Math.round(h / 24) > 1 ? "s" : ""}`; };
   const lien = (x) => `https://www.sylvainbrochu.ca/admin/#courriels/recus:${x.uid}`;
-  const sujet = liste.length === 1 ? `Rappel : ${qui(liste[0])} attend ma réponse` : `Rappel : ${liste.length} courriels attendent ma réponse`;
-  const intro = liste.length === 1 ? "Ce courriel attend ma réponse :" : "Ces courriels attendent ma réponse :";
-  const lignes = liste.map((x) => `- ${qui(x)}, « ${x.sujet} », reçu il y a ${age(x.date)}${x.formulaire ? " (formulaire de mon site)" : ""}\n  Lire et répondre : ${lien(x)}`);
-  const text = `${intro}\n\n${lignes.join("\n\n")}\n\nRépondre vite fait bonne impression. Je réponds depuis mon espace : la réponse part de info@sylvainbrochu.ca.\n\n--\nRappel automatique de mon espace sylvainbrochu.ca/admin (réglable dans Réglages).`;
+  const sujet = liste.length === 1 ? `Rappel : ${qui(liste[0])} attend ta réponse` : `Rappel : ${liste.length} courriels attendent ta réponse`;
+  const intro = liste.length === 1 ? "Bonjour Sylvain, ce courriel attend ta réponse :" : "Bonjour Sylvain, ces courriels attendent ta réponse :";
+  const lignes = liste.map((x) => `- ${qui(x)}, « ${x.sujet} », reçu il y a ${age(x.date)}${x.formulaire ? " (formulaire de ton site)" : ""}\n  Lire et répondre : ${lien(x)}`);
+  const text = `${intro}\n\n${lignes.join("\n\n")}\n\nRépondre vite fait bonne impression. Réponds depuis ton espace : la réponse part de info@sylvainbrochu.ca.\n\n--\nRappel automatique de ton espace sylvainbrochu.ca/admin (réglable dans Réglages).`;
   const html = `<div style="font:15px/1.5 -apple-system,Segoe UI,Arial,sans-serif;color:#1d1a20;max-width:560px">
 <p style="margin:0 0 14px">${echapper(intro)}</p>
 ${liste.map((x) => `<div style="border:1px solid #e3ddd3;border-left:4px solid #c8a26b;border-radius:8px;padding:12px 14px;margin:0 0 10px">
-<b>${echapper(qui(x))}</b><br><span style="color:#6b635b">« ${echapper(x.sujet)} », reçu il y a ${age(x.date)}${x.formulaire ? " (formulaire de mon site)" : ""}</span><br>
+<b>${echapper(qui(x))}</b><br><span style="color:#6b635b">« ${echapper(x.sujet)} », reçu il y a ${age(x.date)}${x.formulaire ? " (formulaire de ton site)" : ""}</span><br>
 <a href="${lien(x)}" style="display:inline-block;margin-top:10px;background:#c8a26b;color:#17151a;text-decoration:none;font-weight:600;padding:9px 16px;border-radius:6px">Lire et répondre</a></div>`).join("")}
-<p style="margin:14px 0 0;color:#6b635b">Répondre vite fait bonne impression. Je réponds depuis mon espace : la réponse part de info@sylvainbrochu.ca.</p>
-<p style="margin:18px 0 0;font-size:12px;color:#9a9187">Rappel automatique de mon espace sylvainbrochu.ca/admin (réglable dans Réglages).</p></div>`;
+<p style="margin:14px 0 0;color:#6b635b">Répondre vite fait bonne impression. Réponds depuis ton espace : la réponse part de info@sylvainbrochu.ca.</p>
+<p style="margin:18px 0 0;font-size:12px;color:#9a9187">Rappel automatique de ton espace sylvainbrochu.ca/admin (réglable dans Réglages).</p></div>`;
   return { sujet, text, html };
 }
 export async function envoyerRappel(destinataires, liste) {
