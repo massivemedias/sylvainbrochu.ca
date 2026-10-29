@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       if (action === "brouillon") { const r = await mail.brouillon(b); await journal(u, `Brouillon créé pour ${b.a} : ${b.sujet}`); return json(res, 200, r); }
       if (action === "envoyerBrouillon") { const r = await mail.envoyerBrouillon(b.uid); await journal(u, `Brouillon envoyé à ${(r.a || []).join(", ")}`); return json(res, 200, r); }
       if (action === "supprimerBrouillon") { const r = await mail.supprimerBrouillon(b.uid); await journal(u, "Brouillon supprimé"); return json(res, 200, r); }
-      if (action === "recreerBrouillons") { const r = await mail.recreerBrouillons(await candidatures()); if (r.crees.length) await journal(u, `${r.crees.length} brouillons recréés`); return json(res, 200, r); }
+      if (action === "recreerBrouillons") { const r = await mail.recreerBrouillons(await candidatures(), b && b.remplacer === true); if (r.crees.length) await journal(u, `${r.crees.length} brouillons recréés`); return json(res, 200, r); }
       if (action === "synchroniser") return json(res, 200, { resultats: await mail.synchroniser(b.adresses) });
       return json(res, 400, { erreur: "Action inconnue" });
     }
