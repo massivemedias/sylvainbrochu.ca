@@ -102,7 +102,11 @@ async function demarrer() {
     rendreCoque();
     window.addEventListener("hashchange", allerA);
     allerA();
-    api("/api/courriels/?action=etat").then((m) => { etat.mail = m; if (["courriels", "tableau"].includes(etat.page)) rendrePage(); }).catch(() => { etat.mail = { pret: false, raison: "Erreur" }; });
+    api("/api/courriels/?action=etat").then((m) => {
+      etat.mail = m;
+      if (m.import && m.import.crees.length) toast(`${m.import.crees.length} brouillon${m.import.crees.length > 1 ? "s" : ""} de candidature recréé${m.import.crees.length > 1 ? "s" : ""} dans ${m.boite}.`);
+      if (["courriels", "tableau"].includes(etat.page)) rendrePage();
+    }).catch(() => { etat.mail = { pret: false, raison: "Erreur" }; });
   } catch (e) {
     $("#app").innerHTML = `<div class="connexion"><div class="boite"><div class="sb">SB</div><h1>Admin</h1><p class="alerte">${E(e.message)}</p></div></div>`;
   }
@@ -364,7 +368,9 @@ const remplir = (t, c = {}) => String(t || "")
 function preparerCandidature(c) {
   if (!c.courriel && c.formulaire) { window.open(c.formulaire, "_blank", "noopener"); return toast("Formulaire ouvert. Change le statut quand c'est envoyé."); }
   const mod = (etat.d.modeles || []).find((m) => m.id === (c.type === "temporaire" ? "temporaire" : c.type === "spontanee" ? "spontanee" : "offre"));
-  ouvrirComposeur({ a: c.courriel, sujet: c.objet || remplir(mod?.objet, c), texte: c.texte ? c.texte + (c.texte.includes("Sylvain Brochu\n") ? "" : "") : remplir(mod?.corps, c), piece: c.cv || "carriere", candidatureId: c.id });
+  const sig = etat.d.reglages.signature || "";
+  const texte = c.texte ? (sig && !c.texte.includes(sig.split("\n")[0] + "\n") ? `${c.texte.trimEnd()}\n\n${sig}` : c.texte) : remplir(mod?.corps, c);
+  ouvrirComposeur({ a: c.courriel, sujet: c.objet || remplir(mod?.objet, c), texte, piece: c.cv || "carriere", candidatureId: c.id });
 }
 function preparerRelance(c) {
   const mod = (etat.d.modeles || []).find((m) => m.id === "relance");
@@ -470,7 +476,7 @@ function ouvrirComposeur(o = {}) {
 function blocConfigCourriel(court = false) {
   return `<div class="config"><h3>Boîte info@ pas encore branchée</h3>
   ${court ? `<p class="aide">Mika doit ajouter le mot de passe d'application Gmail dans Vercel. Détails dans Réglages.</p>` : `<ol>
-    <li>Dans le compte Google <b>${E(etat.mail?.boite || "mauditemachine@gmail.com")}</b>, ouvrir <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Mots de passe des applications</a> et en créer un nommé « Admin Sylvain ».</li>
+    <li>Dans le compte Google <b>${E(etat.mail?.boite || "massivemedias@gmail.com")}</b>, ouvrir <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Mots de passe des applications</a> et en créer un nommé « Admin Sylvain ».</li>
     <li>Dans Vercel, projet <b>sylvainbrochu.ca</b> : Settings, Environment Variables, ajouter <code>MAIL_APP_PASSWORD</code> avec ce mot de passe (Production).</li>
     <li>Redéployer le projet. La boîte s'affiche ici.</li></ol>
   <p class="aide">${E(etat.mail?.raison || "")}</p>`}</div>`;
@@ -479,7 +485,7 @@ function pCourriels() {
   const b = etat.boite;
   if (etat.mail && !etat.mail.pret) { $("#page").innerHTML = entete("Courriels", "Boîte de info@sylvainbrochu.ca.") + blocConfigCourriel(); return; }
   $("#page").innerHTML = entete("Courriels", "Les courriels envoyés à info@sylvainbrochu.ca, les envois et les brouillons. Les réponses partent de info@.",
-    `<button class="btn" data-act="rafraichir-boite">Actualiser</button><button class="btn laiton" data-act="nouveau-courriel">Nouveau courriel</button>`) + `
+    `${b.dossier === "brouillons" ? `<button class="btn" data-act="recreer-brouillons" title="Crée dans Gmail les brouillons des candidatures « Brouillon prêt » qui n'en ont pas">Recréer les brouillons manquants</button>` : ""}<button class="btn" data-act="rafraichir-boite">Actualiser</button><button class="btn laiton" data-act="nouveau-courriel">Nouveau courriel</button>`) + `
   <div class="boite">
     <div class="colonne"><div class="tetecol">
       <div class="dossiers">${[["recus", "Reçus"], ["envoyes", "Envoyés"], ["brouillons", "Brouillons"]].map(([k, n]) => `<button type="button" data-dossier="${k}" aria-pressed="${k === b.dossier}">${n}</button>`).join("")}</div>
@@ -806,6 +812,14 @@ document.addEventListener("click", async (e) => {
     case "synchro": return synchroniser();
     case "marquer-reponse": if (cand) { cand.reponseLe = jour(); cand.reponseTraitee = false; noter(cand, "Réponse reçue"); sauver("candidatures"); toast("Réponse notée."); } return;
     case "rafraichir-boite": etat.boite.listes = {}; return pCourriels();
+    case "recreer-brouillons": {
+      t.disabled = true; t.textContent = "Création...";
+      try {
+        const r = await api("/api/courriels/?action=recreerBrouillons", { method: "POST", body: {} });
+        toast(r.crees.length ? `${r.crees.length} brouillon${r.crees.length > 1 ? "s" : ""} créé${r.crees.length > 1 ? "s" : ""}.` : "Tous les brouillons existent déjà.");
+        etat.boite.listes = {}; return pCourriels();
+      } catch (err) { t.disabled = false; t.textContent = "Recréer les brouillons manquants"; return toast(err.code === "COURRIEL_ABSENT" ? "Connexion Gmail pas encore configurée (voir Réglages)." : err.message, true); }
+    }
     case "repondre": return repondre();
     case "envoyer-brouillon": {
       if (t.dataset.ok !== "1") { t.dataset.ok = "1"; t.textContent = "Confirmer l'envoi"; return; }
