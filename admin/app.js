@@ -213,17 +213,47 @@ async function chargerOffres(force = false) {
 }
 
 // ---------- Graphique ----------
+// Graphique par jour : dessiné à la largeur réelle de son cadre (texte jamais étiré), redessiné si le cadre change.
+const SERIES = new Map(); let obsGraph = null;
 function graphique(serie) {
-  const w = 700, h = 200, g = 28, n = serie.length || 1;
-  const max = Math.max(4, ...serie.map((x) => x.vues));
-  const bw = (w - g) / n;
-  const y = (v) => h - 22 - (v / max) * (h - 40);
-  const barres = serie.map((x, i) => `<rect x="${g + i * bw + bw * .15}" y="${y(x.vues)}" width="${bw * .7}" height="${h - 22 - y(x.vues)}" rx="2" fill="#c8a26b"><title>${dateCourte(x.date)} : ${x.vues} vues, ${x.visiteurs} visiteurs</title></rect>`).join("");
-  const pts = serie.map((x, i) => `${g + i * bw + bw / 2},${y(x.visiteurs)}`).join(" ");
-  const etiq = serie.map((x, i) => (i % Math.ceil(n / 7) === 0 ? `<text x="${g + i * bw + bw / 2}" y="${h - 6}" font-size="11" text-anchor="middle" fill="#6b635b">${dateCourte(x.date)}</text>` : "")).join("");
-  const lignes = [0, .5, 1].map((t) => `<line x1="${g}" x2="${w}" y1="${y(max * t)}" y2="${y(max * t)}" stroke="rgba(23,21,26,.08)"/><text x="0" y="${y(max * t) + 4}" font-size="11" fill="#9a9187">${Math.round(max * t)}</text>`).join("");
-  return `<svg class="graph" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Pages vues et visiteurs par jour">${lignes}${barres}<polyline points="${pts}" fill="none" stroke="#17151a" stroke-width="2"/>${etiq}</svg>
-  <p class="aide"><span style="display:inline-block;width:10px;height:10px;background:#c8a26b;border-radius:2px"></span> Pages vues &nbsp; <span style="display:inline-block;width:14px;height:2px;background:#17151a;vertical-align:3px"></span> Visiteurs</p>`;
+  const id = "g" + uid(); SERIES.set(id, serie || []);
+  requestAnimationFrame(() => tracerGraphique(id));
+  return `<div class="graph-boite" id="${id}"></div>
+  <p class="aide legende-graph"><span class="lg-barre"></span> Pages vues <span class="lg-ligne"></span> Visiteurs</p>`;
+}
+function tracerGraphique(id) {
+  const el = document.getElementById(id); if (!el) { SERIES.delete(id); return; }
+  const cs = getComputedStyle(el);
+  el._w = el.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0); el.innerHTML = svgGraphique(SERIES.get(id), el._w || 700);
+  if (!obsGraph && "ResizeObserver" in window) obsGraph = new ResizeObserver((l) => l.forEach((e) => {
+    const s2 = SERIES.get(e.target.id); const w = e.contentRect.width;
+    if (!e.target.isConnected) { obsGraph.unobserve(e.target); SERIES.delete(e.target.id); return; }
+    if (s2 && Math.abs((e.target._w || 0) - w) > 4) { e.target._w = w; e.target.innerHTML = svgGraphique(s2, w); }
+  }));
+  if (obsGraph) obsGraph.observe(el);
+}
+function svgGraphique(serie, largeur) {
+  const w = Math.max(280, Math.round(largeur)), h = 210, g = 38, droite = 8, bas = 28, haut = 12, n = serie.length || 1;
+  const brut = Math.max(4, ...serie.map((x) => Math.max(x.vues || 0, x.visiteurs || 0)));
+  const p10 = 10 ** Math.floor(Math.log10(brut));
+  const max = [1, 2, 2.5, 5, 10].map((k) => k * p10).find((v) => v >= brut);
+  const bw = (w - g - droite) / n;
+  const y = (v) => h - bas - (v / max) * (h - bas - haut);
+  const cx = (i) => g + i * bw + bw / 2;
+  const larg = Math.max(2, Math.min(26, bw * 0.68));
+  const grille = [0, 0.5, 1].map((t) => `<line x1="${g}" x2="${w - droite}" y1="${y(max * t)}" y2="${y(max * t)}" stroke="rgba(23,21,26,${t ? 0.07 : 0.18})"/><text x="${g - 8}" y="${y(max * t) + 4}" font-size="11" text-anchor="end" fill="#9a9187">${Math.round(max * t)}</text>`).join("");
+  const barres = serie.map((x, i) => (x.vues ? `<rect x="${cx(i) - larg / 2}" y="${y(x.vues)}" width="${larg}" height="${Math.max(1, h - bas - y(x.vues))}" rx="2" fill="#c8a26b"><title>${dateCourte(x.date)} : ${x.vues} pages vues, ${x.visiteurs} visiteurs</title></rect>` : "")).join("");
+  const ligne = `<polyline points="${serie.map((x, i) => `${cx(i)},${y(x.visiteurs || 0)}`).join(" ")}" fill="none" stroke="#17151a" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const points = serie.map((x, i) => (x.visiteurs ? `<circle cx="${cx(i)}" cy="${y(x.visiteurs)}" r="2.6" fill="#17151a"><title>${dateCourte(x.date)} : ${x.visiteurs} visiteurs</title></circle>` : "")).join("");
+  const nbEtiq = Math.max(2, Math.floor((w - g) / 84));
+  const pas = Math.max(1, Math.ceil(n / nbEtiq));
+  const etiq = serie.map((x, i) => {
+    if ((n - 1 - i) % pas !== 0) return ""; // on part de la fin pour que le dernier jour soit toujours affiché
+    const demi = 24; // demi-largeur approximative d'une date
+    const [xx, ancre] = cx(i) + demi > w - droite ? [w - droite, "end"] : cx(i) - demi < g ? [g, "start"] : [cx(i), "middle"];
+    return `<text x="${xx}" y="${h - 8}" font-size="11" text-anchor="${ancre}" fill="#6b635b">${dateCourte(x.date)}</text>`;
+  }).join("");
+  return `<svg class="graph" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Pages vues et visiteurs par jour">${grille}${barres}${ligne}${points}${etiq}</svg>`;
 }
 const barres = (liste, vide = "Aucune donnée pour cette période.") => {
   if (!liste || !liste.length) return `<p class="vide">${vide}</p>`;
