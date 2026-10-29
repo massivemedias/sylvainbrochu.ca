@@ -1,11 +1,13 @@
 // /api/offres : veille d'offres d'emploi, à partir de sources publiques.
 // Carrière : Cirque du Soleil (Lever), Solotech, Humanise/GSM (Teamtailor), Guichet-Emplois.
 // Temporaire (bar, service) : Hôtellerie Jobs, Guichet-Emplois.
-// Aussi : Grenier aux emplois, Cultive, Jobillico, Talent.com.
+// Aussi : Grenier aux emplois, Cultive, Jobillico, Talent.com, CQT, Eluta,
+// et les alertes courriel (Indeed, LinkedIn, Glassdoor, Jobboom) reçues sur info@.
 // GET ?rafraichir=1 pour ignorer le cache (3 h).
 import { createHash } from "node:crypto";
 import { exiger } from "./_lib/auth.js";
 import { cmd } from "./_lib/kv.js";
+import { alertesEmploi } from "./_lib/mail.js";
 import { erreur, json, parametres } from "./_lib/util.js";
 
 const CARRIERE = /(chargé|charg[ée]e|gestionnaire|directeur|directrice|direction|coordonnat|responsable|producteur|productrice|chef de projet|project manager|production manager|operations manager|producer|logisti|opérations|operations|événement|evenement|event|scénograph|exposition|fabrication|atelier)/i;
@@ -17,7 +19,8 @@ const RAPIDE = /(tim\s*hortons?|mc\s*donald|a\s*&\s*w\b|subway|burger\s*king|sta
 const pasRapide = (o) => !RAPIDE.test(`${o.entreprise || ""} ${o.titre || ""}`);
 
 const id = (u) => createHash("sha1").update(u).digest("hex").slice(0, 12);
-const entites = (s) => String(s || "").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+const NOMMEES = { eacute: "é", egrave: "è", ecirc: "ê", euml: "ë", agrave: "à", acirc: "â", auml: "ä", ccedil: "ç", icirc: "î", iuml: "ï", ocirc: "ô", ouml: "ö", ugrave: "ù", ucirc: "û", uuml: "ü", Eacute: "É", Egrave: "È", Ecirc: "Ê", Agrave: "À", Acirc: "Â", Ccedil: "Ç", Icirc: "Î", Ocirc: "Ô", Ucirc: "Û", oelig: "œ", OElig: "Œ", laquo: "«", raquo: "»", rsquo: "'", lsquo: "'", ldquo: '"', rdquo: '"', hellip: "...", ndash: "-", mdash: "-", middot: "·", bull: "•", euro: "€", deg: "°", copy: "©", reg: "®", trade: "™", shy: "" };
+const entites = (s) => String(s || "").replace(/&([a-zA-Z]+);/g, (t, n) => (n in NOMMEES ? NOMMEES[n] : t)).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
   .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 const texte = (s) => entites(entites(String(s || "").replace(/<!\[CDATA\[|\]\]>/g, "")).replace(/<[^>]+>/g, " ")).replace(/<[^>]+>/g, " ").replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ").trim();
 
@@ -71,7 +74,7 @@ async function hotellerie(q) {
   return [...x.matchAll(/<a[^>]+href="(\/fr\/job\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => {
     const parts = m[2].replace(/<[^>]+>/g, "|").split("|").map((s) => texte(s)).filter(Boolean);
     return { titre: parts[1] || parts[0] || "", entreprise: parts[0] || "", contrat: parts[2] || "", lieu: (parts[3] || "").replace(/, Canada$/, ""), url: "https://www.hotelleriejobs.com" + m[1], date: "", source: "Hôtellerie Jobs", profil: "temporaire", resume: "" };
-  }).filter((o) => o.titre && /montr|laval|longueuil|brossard|boucherville|qu[ée]bec|saint-jean/i.test(o.lieu));
+  }).filter((o) => o.titre && REGION.test(o.lieu) && TEMPO.test(o.titre) && pertinent(o));
 }
 
 async function jooble(q, profil) {
@@ -140,6 +143,114 @@ async function talent(q, profil) {
   return [...vu.values()];
 }
 
+// Babillard du Conseil québécois du théâtre (arts de la scène)
+async function cqt() {
+  const h = await (await obtenir("https://cqt.ca/babillard")).text();
+  return [...h.matchAll(/<a href="(\/babillard\/annonce\/\d+)">([\s\S]*?)<\/a>([\s\S]*?)<\/td>/g)].map((m) => {
+    const f = enChamps(m[3]).split("|").map((x) => x.trim()).filter(Boolean);
+    const limite = (f.find((x) => /^Date limite/i.test(x)) || "").replace(/^Date limite\s*:\s*/i, "");
+    const autres = f.filter((x) => !/^Date limite/i.test(x));
+    return { titre: texte(m[2]), entreprise: autres[0] || "", lieu: autres[1] || "", url: "https://cqt.ca" + m[1], date: "", source: "CQT (théâtre)", profil: "carriere", resume: limite ? `Date limite : ${limite}` : "" };
+  }).filter((o) => CARRIERE.test(o.titre) && !EXCLURE.test(o.titre) && !/(pr[ée]paration [àa]|formation|webinaire|s[ée]ance|atelier de)/i.test(o.titre) && (!o.lieu || REGION.test(o.lieu)));
+}
+
+// « il y a 3 jours » / « 14+ days ago » -> date ISO
+function dateRelative(s) {
+  const m = String(s || "").match(/(\d+)\+?\s*(hour|heure|day|jour|week|semaine|month|mois)/i);
+  if (!m) return /today|aujourd/i.test(String(s)) ? new Date().toISOString() : "";
+  const u = m[2].toLowerCase();
+  const ms = /hour|heure/.test(u) ? 36e5 : /day|jour/.test(u) ? 864e5 : /week|semaine/.test(u) ? 6048e5 : 2592e6;
+  return new Date(Date.now() - Number(m[1]) * ms).toISOString();
+}
+
+// Eluta.ca lit directement les sites carrières des employeurs canadiens (Groupe CH, Spectra, musées...).
+// Le site limite les requêtes : peu de recherches, gardées 12 h.
+async function eluta(q) {
+  const h = await (await obtenir(`https://www.eluta.ca/search?q=${encodeURIComponent(q)}&l=${encodeURIComponent("Montréal, QC")}`)).text();
+  if (/User Verification/i.test(h.slice(0, 4000))) throw new Error("Eluta limite les requêtes, nouvel essai plus tard");
+  return h.split('class="organic-job').slice(1).map((b) => {
+    const g = (re) => (b.match(re) || [])[1] || "";
+    const u = g(/data-url="([^"]+)"/);
+    return { titre: entites(g(/class="lk-job-title"[\s\S]*?title="([^"]*)"/)), entreprise: entites(g(/title="See all jobs at ([^"]*)"/)), lieu: entites(g(/class="location">\s*<span>([^<]*)/)), url: u ? "https://www.eluta.ca/" + u : "", date: dateRelative(g(/indexed it">([^<]*)/)), source: "Eluta", profil: "carriere", resume: texte(g(/class="description">([\s\S]*?)<\/span>\s*<!--/)).slice(0, 280) };
+  }).filter((o) => o.url && o.titre);
+}
+
+// Garde le résultat d'une source dans Redis ; si la source échoue, on reprend la dernière copie.
+async function enReserve(cle, heures, f) {
+  let copie = null;
+  try { copie = JSON.parse((await cmd("GET", `sb:src:${cle}`)) || "null"); } catch { copie = null; }
+  if (copie && Date.now() - copie.t < heures * 36e5) return copie.l;
+  try {
+    const l = await f();
+    await cmd("SET", `sb:src:${cle}`, JSON.stringify({ t: Date.now(), l }), "EX", 7 * 86400);
+    return l;
+  } catch (e) { if (copie) return copie.l; throw e; }
+}
+
+// ---------- Alertes courriel (Indeed, LinkedIn, Glassdoor, Jobboom...) ----------
+// Ces sites bloquent la lecture automatique : Sylvain s'abonne à leurs alertes avec info@sylvainbrochu.ca,
+// et les offres reçues par courriel sont ajoutées ici.
+const SITES_ALERTE = [
+  [/indeed\./i, "Indeed", (u) => { const m = u.match(/[?&](?:jk|vjk)=([0-9a-f]{8,})/i); return m ? "in:" + m[1] : /indeed\.[a-z.]+\/(rc\/clk|viewjob|pagead|m\/viewjob|applystart)|cts\.indeed\./i.test(u) ? "in:" + u.split("#")[0] : null; }],
+  [/linkedin\./i, "LinkedIn", (u) => { const m = u.match(/jobs\/view\/(?:[^/?"]*-)?(\d{6,})/i); return m ? "li:" + m[1] : null; }],
+  [/glassdoor\./i, "Glassdoor", (u) => { const m = u.match(/[?&](?:jobListingId|jl)=(\d+)/i); return m ? "gd:" + m[1] : /glassdoor\.[a-z.]+\/(partner\/jobListing|job-listing)/i.test(u) ? "gd:" + u.split("#")[0] : null; }],
+  [/jobboom\./i, "Jobboom", (u) => { const m = u.match(/jobboom\.com\/[a-z]{2}\/(?:emploi|job|offre)[^"?]*?(\d{5,})/i); return m ? "jb:" + m[1] : null; }],
+  [/jobillico\./i, "Jobillico", (u) => { const m = u.match(/offre-d-emploi\/[^"?]*?\/(\d{4,})/i); return m ? "jo:" + m[1] : null; }],
+  [/talent\.com/i, "Talent.com", (u) => { const m = u.match(/talent\.com\/[^"]*?[?&]id=(\d{8,})/i); return m ? "ta:" + m[1] : null; }],
+  [/eluta\./i, "Eluta", (u) => { const m = u.match(/eluta\.ca\/spl\/[^"?#]+/i); return m ? "el:" + m[0] : null; }],
+  [/jobbank|guichetemplois/i, "Guichet-Emplois", (u) => { const m = u.match(/jobposting\/(\d+)/i); return m ? "ge:" + m[1] : null; }],
+  [/workopolis|monster|ziprecruiter|simplyhired|careerjet/i, "Alerte", (u) => /\/(job|jobs|emploi|offre|clk|view)[/?]/i.test(u) ? "x:" + u.split("#")[0] : null],
+];
+const BRUIT = /(d[ée]sabonn|unsubscribe|confidentialit|privacy|copyright|©|tous droits|all rights|voir (toutes|tous|plus)|see (all|more)|view (all|more)|g[ée]rer|manage|param[èe]tres|settings|t[ée]l[ée]charge|download the app|application mobile|^postuler$|^apply|candidature simplifi|easy apply|^nouveau$|^new$|promu|promoted|actively|recrute activement|^il y a|ago$|^\d+[.,]?\d*\s*★?$|^\$|\$\s*\d|par (heure|an|année)|\/h$|per (hour|year)|^plus$|^more$|^\W+$)/i;
+const LIEU = /(,\s*(QC|Qu[ée]bec|ON|Ontario|Canada)\b|\bmontr[ée]al\b|\blaval\b|longueuil|t[ée]l[ée]travail|remote|hybride|hybrid|sur place|on-site)/i;
+
+function cartesAlerte(html, cle) {
+  const jet = String(html || "")
+    .replace(/<(script|style|head)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>/gi, (_, a, b) => `\u0001${a ?? b}\u0002`)
+    .replace(/<\/a\s*>/gi, "\u0003")
+    .replace(/<\/?(br|p|div|td|tr|li|h\d|table|tbody)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  const cartes = new Map(); let courante = null; let lien = undefined; let apres = 0;
+  for (const m of jet.matchAll(/\u0001([^\u0002]*)\u0002|\u0003|[^\u0001\u0003]+/g)) {
+    if (m[1] !== undefined) {
+      const href = entites(m[1]); let k = cle(href);
+      if (!k) { try { k = cle(decodeURIComponent(decodeURIComponent(href))); } catch { k = null; } }
+      lien = k;
+      if (k) { if (!cartes.has(k)) cartes.set(k, { url: href, morceaux: [] }); courante = cartes.get(k); apres = 0; }
+      continue;
+    }
+    if (m[0] === "\u0003") { lien = undefined; continue; }
+    if (!courante || (lien === null)) continue; // texte d'un lien qui n'est pas une offre
+    if (lien === undefined && ++apres > 6) continue; // texte après la carte : seulement les premières lignes
+    for (const l of entites(m[0]).split("\n")) {
+      for (const champ of l.split(/\s+[·•|]\s+/)) {
+        const t = champ.replace(/\s+/g, " ").trim();
+        if (t.length >= 2 && t.length <= 140 && !BRUIT.test(t) && !courante.morceaux.includes(t) && courante.morceaux.length < 8) courante.morceaux.push(t);
+      }
+    }
+  }
+  return [...cartes.entries()].map(([k, c]) => {
+    const f = c.morceaux;
+    const lieu = f.find((x) => LIEU.test(x)) || "";
+    const reste = f.filter((x) => x !== lieu);
+    return { cle: k, url: c.url, titre: reste[0] || "", entreprise: reste[1] || "", lieu };
+  }).filter((c) => c.titre.length > 3);
+}
+
+async function alertes() {
+  const r = await alertesEmploi((msg) => {
+    const site = SITES_ALERTE.find(([re]) => re.test(msg.de));
+    if (!site) return [];
+    return cartesAlerte(msg.html, site[2]).map((c) => ({ ...c, date: msg.date, source: site[1] === "Alerte" ? "Alerte courriel" : `Alerte ${site[1]}` }));
+  });
+  const vu = new Set();
+  return r.offres.filter((o) => !vu.has(o.cle) && vu.add(o.cle)).map((o) => {
+    const profil = CARRIERE.test(o.titre) ? "carriere" : TEMPO.test(o.titre) ? "temporaire" : "";
+    return { titre: o.titre, entreprise: o.entreprise, lieu: o.lieu, url: o.url, date: o.date, source: o.source, profil, resume: "" };
+  }).filter((o) => o.profil && pertinent(o) && (o.profil === "temporaire" || DOMAINE.test(`${o.titre} ${o.entreprise}`)));
+}
+
 async function collecter() {
   const taches = [
     ["Cirque du Soleil", () => lever("cirquedusoleil", "Cirque du Soleil")],
@@ -154,6 +265,13 @@ async function collecter() {
     ...["barman", "serveur banquet"].map((q) => [`Jobillico : ${q}`, async () => (await jobillico(q, "temporaire")).filter(pertinent)]),
     ...["chargé de projets événements", "directeur de production", "gestionnaire de production spectacle", "coordonnateur de production événement"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "carriere")).filter((o) => DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o))]),
     ...["barman", "serveur banquet"].map((q) => [`Talent.com : ${q}`, async () => (await talent(q, "temporaire")).filter(pertinent)]),
+    ["CQT (théâtre)", cqt],
+    ["Eluta (sites carrières des employeurs)", () => enReserve("eluta", 12, async () => {
+      const l = [];
+      for (const q of ["directeur de production", "chargé de projets événements"]) { l.push(...(await eluta(q))); await new Promise((ok) => setTimeout(ok, 1500)); }
+      return l;
+    }).then((l) => l.filter((o) => CARRIERE.test(o.titre) && DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o)))],
+    ...(process.env.MAIL_APP_PASSWORD ? [["Alertes courriel (Indeed, LinkedIn, Glassdoor, Jobboom)", alertes]] : []),
     ...(process.env.JOOBLE_KEY ? [["Jooble carrière", () => jooble("directeur de production OR chargé de projets événementiel", "carriere")], ["Jooble temporaire", () => jooble("barman", "temporaire")]] : []),
   ];
   const res = await Promise.allSettled(taches.map(([, f]) => f()));
