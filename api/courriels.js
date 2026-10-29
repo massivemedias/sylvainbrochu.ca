@@ -1,10 +1,15 @@
 // /api/courriels : boîte de info@sylvainbrochu.ca.
 // GET  ?action=liste&dossier=recus|envoyes|brouillons&q=   |  ?action=lire&dossier=&uid=  |  ?action=piece&dossier=&uid=&index=  |  ?action=etat
-// POST ?action=envoyer|brouillon|envoyerBrouillon|supprimerBrouillon|synchroniser
+// POST ?action=envoyer|brouillon|envoyerBrouillon|supprimerBrouillon|synchroniser|recreerBrouillons
 import { exiger } from "./_lib/auth.js";
-import { cmd } from "./_lib/kv.js";
+import { cmd, lireJSON } from "./_lib/kv.js";
+import { DONNEES_DEFAUT } from "./_lib/defauts.js";
 import * as mail from "./_lib/mail.js";
 import { corps, erreur, json, parametres } from "./_lib/util.js";
+
+async function candidatures() {
+  return lireJSON("sb:candidatures", DONNEES_DEFAUT.candidatures);
+}
 
 async function journal(u, quoi) {
   await cmd("LPUSH", "sb:journal", JSON.stringify({ date: new Date().toISOString(), qui: u.email, quoi }));
@@ -17,7 +22,18 @@ export default async function handler(req, res) {
     const q = parametres(req);
     const action = q.get("action") || "liste";
     if (req.method === "GET") {
-      if (action === "etat") return json(res, 200, await mail.etat());
+      if (action === "etat") {
+        const e = await mail.etat();
+        // Première connexion de la boîte : on recrée une seule fois les brouillons des candidatures prêtes.
+        if (e.pret && (await cmd("SET", `sb:brouillons:importes:${e.boite}`, new Date().toISOString(), "NX")) === "OK") {
+          try {
+            const r = await mail.recreerBrouillons(await candidatures());
+            e.import = r;
+            if (r.crees.length) await journal(u, `${r.crees.length} brouillons recréés dans ${e.boite}`);
+          } catch (err) { await cmd("DEL", `sb:brouillons:importes:${e.boite}`); e.importErreur = String(err.message || err); }
+        }
+        return json(res, 200, e);
+      }
       if (action === "liste") return json(res, 200, { messages: await mail.liste(q.get("dossier") || "recus", (q.get("q") || "").slice(0, 200)) });
       if (action === "lire") return json(res, 200, { message: await mail.lire(q.get("dossier") || "recus", q.get("uid")) });
       if (action === "piece") {
@@ -36,6 +52,7 @@ export default async function handler(req, res) {
       if (action === "brouillon") { const r = await mail.brouillon(b); await journal(u, `Brouillon créé pour ${b.a} : ${b.sujet}`); return json(res, 200, r); }
       if (action === "envoyerBrouillon") { const r = await mail.envoyerBrouillon(b.uid); await journal(u, `Brouillon envoyé à ${(r.a || []).join(", ")}`); return json(res, 200, r); }
       if (action === "supprimerBrouillon") { const r = await mail.supprimerBrouillon(b.uid); await journal(u, "Brouillon supprimé"); return json(res, 200, r); }
+      if (action === "recreerBrouillons") { const r = await mail.recreerBrouillons(await candidatures()); if (r.crees.length) await journal(u, `${r.crees.length} brouillons recréés`); return json(res, 200, r); }
       if (action === "synchroniser") return json(res, 200, { resultats: await mail.synchroniser(b.adresses) });
       return json(res, 400, { erreur: "Action inconnue" });
     }
