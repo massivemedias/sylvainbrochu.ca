@@ -229,3 +229,17 @@ table.tab { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .aide { font-size: .84rem; color: var(--doux); }
 .sep { height: 1px; background: var(--trait); margin: 4px 0; }
 .ok-txt { color: var(--ok); font-weight: 600; } .ko-txt { color: var(--urg); font-weight: 600; }
+
+/* Carte des offres */
+.carte-offres { margin: 14px 0 18px; }
+.carte-offres header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.carte-geo .leaflet-tile-pane { filter: grayscale(.9) sepia(.12) contrast(.92) brightness(1.04); }
+.carte-geo { height: 380px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(0,0,0,.08); background: #ece8df; z-index: 0; }
+.carte-offres .legende { margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.carte-offres .pt { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-left: 10px; }
+.carte-offres .pt:first-child { margin-left: 0; }
+.pt-c { background: #2e5e4e; border: 2px solid #1d1d1b; }
+.pt-t { background: #c8a26b; border: 2px solid #a9824a; }
+.pt-v { background: transparent; border: 2px dashed #777; }
+.leaflet-popup-content { font-family: inherit; font-size: .86rem; line-height: 1.4; }
+@media (max-width: 640px) { .carte-geo { height: 300px; } }

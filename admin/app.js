@@ -580,6 +580,9 @@ function pOffres() {
     `<button class="btn" data-act="ajouter-offre">Ajouter une offre</button><button class="btn" data-act="rafraichir-offres">Actualiser</button>`) + `
   <div class="filtres">${[["tous", "Toutes"], ["carriere", "Carrière"], ["temporaire", "Temporaire (bar, service)"], ["sauvees", "Mes offres ajoutées"]].map(([k, n]) => `<button type="button" data-profil="${k}" aria-pressed="${k === etat.profilOffres}">${n}</button>`).join("")}</div>
   <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
+  <section class="carte carte-offres"><header><h2>Carte des offres</h2><span class="aide" id="geo-etat"></span></header>
+    <div id="carte-off" class="carte-geo" role="region" aria-label="Carte des offres d'emploi"></div>
+    <p class="aide legende"><span class="pt pt-c"></span> Carrière <span class="pt pt-t"></span> Temporaire <span class="pt pt-v"></span> Position approximative (ville)</p></section>
   <div class="offres" id="liste-off"><p class="vide">Recherche des offres...</p></div>
   <div class="grille g2" style="margin-top:22px">
     <section class="carte"><header><h2>Recherches rapides</h2></header>
@@ -610,10 +613,67 @@ async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), for
   const q = etat.rechOffres.toLowerCase();
   if (q) l = l.filter((x) => `${x.titre} ${x.entreprise} ${x.lieu} ${x.resume}`.toLowerCase().includes(q));
   const dejaLiees = new Set((etat.d.candidatures || []).map((c) => c.lien).filter(Boolean));
+  etat.carteCadree = false; majCarte(l);
+  if (o.geoAttente > 0) localiserOffres();
   el.innerHTML = l.length ? l.map((x) => `<article class="offre"><div><h3>${E(x.titre)}</h3><div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.salaire ? `<span>${E(x.salaire)}</span>` : ""}<span>${E(x.source || "Ajoutée")}</span>${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}<span class="pastille ${x.profil === "temporaire" ? "p-brouillon" : "p-envoye"}">${x.profil === "temporaire" ? "Temporaire" : "Carrière"}</span></div></div>
     <div class="actions"><a class="btn petit" href="${E(x.url)}" target="_blank" rel="noopener">Voir l'offre</a>${dejaLiees.has(x.url) ? `<span class="pastille p-reponse">Dans les candidatures</span>` : `<button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Ajouter aux candidatures</button>`}${x.sauvee ? `<button class="btn petit danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}">Masquer</button>`}</div>
     ${x.resume ? `<p>${E(x.resume)}</p>` : ""}</article>`).join("") : `<p class="vide">Aucune offre dans ce filtre.</p>`;
   el._offres = l;
+}
+// ---------- Carte des offres (Leaflet + fond OpenStreetMap, chargés à la demande) ----------
+let leafletPret = null;
+function chargerLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (leafletPret) return leafletPret;
+  leafletPret = new Promise((ok, ko) => {
+    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
+    const js = document.createElement("script"); js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; js.onload = () => ok(window.L); js.onerror = ko; document.head.appendChild(js);
+  });
+  return leafletPret;
+}
+async function majCarte(liste) {
+  const boite = $("#carte-off"); if (!boite) return;
+  let L; try { L = await chargerLeaflet(); } catch { boite.innerHTML = `<p class="vide">Carte indisponible.</p>`; return; }
+  if (!boite.isConnected) return;
+  if (!etat.carte || etat.carte.getContainer() !== boite) {
+    etat.carte = L.map(boite, { scrollWheelZoom: false }).setView([45.55, -73.65], 9);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; les contributeurs d'OpenStreetMap" }).addTo(etat.carte);
+    etat.calqueOffres = L.layerGroup().addTo(etat.carte);
+    etat.carteCadree = false;
+  }
+  etat.calqueOffres.clearLayers();
+  const places = liste.filter((x) => x.geo && x.geo.lat);
+  const compte = {};
+  const points = places.map((x) => {
+    const k = `${x.geo.lat.toFixed(3)},${x.geo.lon.toFixed(3)}`; const n = (compte[k] = (compte[k] || 0) + 1) - 1;
+    const ang = n * 2.4, ray = n ? 0.004 * Math.sqrt(n) : 0; // décale les offres au même endroit
+    const pos = [x.geo.lat + ray * Math.sin(ang), x.geo.lon + ray * Math.cos(ang)];
+    const temp = x.profil === "temporaire", approx = x.geo.precis !== "entreprise";
+    L.circleMarker(pos, { radius: approx ? 6 : 8, color: temp ? "#a9824a" : "#1d1d1b", weight: 2, dashArray: approx ? "3 3" : null, fillColor: temp ? "#c8a26b" : "#2e5e4e", fillOpacity: approx ? 0.25 : 0.85 })
+      .bindPopup(`<b>${E(x.titre)}</b><br>${E(x.entreprise || "")}<br><span style="color:#666">${E(x.lieu || "")}${approx ? " (ville)" : ""}</span><br><a href="${E(x.url)}" target="_blank" rel="noopener">Voir l'offre</a>`)
+      .addTo(etat.calqueOffres);
+    return pos;
+  });
+  if (points.length && !etat.carteCadree) { etat.carte.fitBounds(points, { padding: [24, 24], maxZoom: 11 }); etat.carteCadree = true; }
+  setTimeout(() => etat.carte && etat.carte.invalidateSize(), 50);
+  const ge = $("#geo-etat");
+  if (ge) ge.textContent = `${places.length}/${liste.length} offres placées${etat.offres && etat.offres.geoAttente ? `, localisation en cours (${etat.offres.geoAttente} restantes)` : ""}`;
+}
+let localisationEnCours = false;
+async function localiserOffres() {
+  if (localisationEnCours) return; localisationEnCours = true;
+  try {
+    for (let i = 0; i < 12; i++) {
+      const r = await api("/api/offres/?geo=1");
+      etat.offres = r;
+      if (etat.page !== "offres") break;
+      const l = (($("#liste-off") || {})._offres || []).map((x) => r.offres.find((y) => y.id === x.id) || x);
+      if ($("#liste-off")) $("#liste-off")._offres = l;
+      etat.carteCadree = false;
+      await majCarte(l);
+      if (!r.geoAttente) break;
+    }
+  } catch { /* on réessaiera au prochain affichage */ } finally { localisationEnCours = false; }
 }
 function offreParId(id) { return (($("#liste-off") || {})._offres || []).find((x) => x.id === id) || (etat.offres?.offres || []).find((x) => x.id === id) || (etat.d["offres-sauvees"] || []).find((x) => x.id === id); }
 
