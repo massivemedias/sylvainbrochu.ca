@@ -576,7 +576,7 @@ const SITES = [
 ];
 function pOffres() {
   const masq = new Set(etat.d["offres-masquees"] || []);
-  $("#page").innerHTML = entete("Offres d'emploi", "Offres trouvées automatiquement sur Grenier aux emplois, Cultive, Talent.com, Jobillico, Guichet-Emplois, Hôtellerie Jobs, Cirque du Soleil, Solotech et GSM (grand Montréal, sans restauration rapide). Recherches prêtes sur Indeed et LinkedIn.",
+  $("#page").innerHTML = entete("Offres d'emploi", "Offres trouvées automatiquement sur Grenier aux emplois, Cultive, CQT, Eluta, Talent.com, Jobillico, Guichet-Emplois, Hôtellerie Jobs, Cirque du Soleil, Solotech et GSM, plus les alertes Indeed, LinkedIn, Glassdoor et Jobboom reçues sur info@ (grand Montréal, sans restauration rapide).",
     `<button class="btn" data-act="ajouter-offre">Ajouter une offre</button><button class="btn" data-act="rafraichir-offres">Actualiser</button>`) + `
   <div class="filtres">${[["tous", "Toutes"], ["carriere", "Carrière"], ["temporaire", "Temporaire (bar, service)"], ["sauvees", "Mes offres ajoutées"]].map(([k, n]) => `<button type="button" data-profil="${k}" aria-pressed="${k === etat.profilOffres}">${n}</button>`).join("")}</div>
   <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
