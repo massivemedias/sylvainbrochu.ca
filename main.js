@@ -87,6 +87,29 @@
     });
   }
 
+  // Apparitions au défilement : titres, rangées, cartes, images
+  if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var marquer = function (sel, classe) {
+      document.querySelectorAll(sel).forEach(function (el) {
+        if (el.closest('.hero')) return;
+        el.classList.add(classe);
+        var p = el.parentNode, i = p ? Array.prototype.indexOf.call(p.children, el) : 0;
+        if (classe === 'rv') el.style.transitionDelay = (i % 6) * 70 + 'ms';
+      });
+    };
+    marquer('main h2, .enonce .phrase, .domaines li, .vises-liste li, .etapes li, .postes li, .carte, .valeurs article, .parcours .ligne, .colonnes li, .cv-carte, .projet .texte, .panneau', 'rv');
+    marquer('.projet .visuel, .bandeau .ouvrir, .grille figure, .recit .portrait', 'rv-img');
+    var cibles = document.querySelectorAll('.rv, .rv-img');
+    document.documentElement.classList.add('anim');
+    var vue = new IntersectionObserver(function (entrees) {
+      entrees.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('vu'); vue.unobserve(en.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    cibles.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom > 0) el.classList.add('vu'); else vue.observe(el);
+    });
+  }
+
   // Bouton CV flottant : visible après le haut de page, masqué près des autres boutons CV et du pied
   var flottant = document.querySelector('.cv-flottant');
   if (flottant) {

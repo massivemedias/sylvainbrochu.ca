@@ -85,7 +85,8 @@ strong { font-weight: 600; }
 .hero .bas { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 28px 48px; margin-top: clamp(22px, 3vw, 36px); }
 .hero .lede { max-width: 36ch; margin: 0; font-size: clamp(1.1rem, 1.55vw, 1.32rem); line-height: 1.55; }
 .hero .actions { display: flex; gap: 34px; }
-.hero.lit img.hero-img { animation: allumage 2.2s steps(1, end) .25s forwards, chaleur 1.6s ease-out 1.1s forwards; }
+.hero.lit img.hero-img { animation: allumage 2.2s steps(1, end) .25s forwards, chaleur 1.6s ease-out 1.1s forwards, derive 28s ease-in-out 3s infinite alternate; }
+@keyframes derive { from { transform: scale(1); } to { transform: scale(1.08) translate(-1.2%, -1%); } }
 .hero .reveal { opacity: 0; transform: translateY(16px); }
 .hero.lit .reveal { animation: monte 1s cubic-bezier(.2,.7,.2,1) forwards; }
 .hero.lit h1.reveal { animation-delay: 1.35s; }
@@ -246,14 +247,6 @@ h2 { margin: 0; font: 600 clamp(3rem, 8vw, 7rem)/.88 var(--display); text-transf
 .collab h2 { margin: 0 0 28px; font: 400 .95rem/1.4 var(--body); text-transform: none; letter-spacing: 0; color: var(--laiton); }
 .collab ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px clamp(28px, 4vw, 64px); }
 .collab li { font: 600 clamp(2rem, 4.6vw, 4.2rem)/1.08 var(--display); text-transform: uppercase; letter-spacing: .01em; color: var(--ivoire); }
-
-/* Bande de photos pleine largeur */
-.bande { padding: 0; }
-.bande ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; background: var(--nuit); }
-.bande li { aspect-ratio: 7 / 9; overflow: hidden; background: var(--nuit-2); }
-.bande img { width: 100%; height: 100%; object-fit: cover; transition: transform 1.2s cubic-bezier(.2,.7,.2,1); }
-.bande li:hover img { transform: scale(1.04); }
-@media (max-width: 760px) { .bande ul { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* Collaborations sur fond cèdre */
 .collab { background: var(--nuit-2); }
@@ -467,3 +460,71 @@ dialog.visionneuse::backdrop { background: rgba(17,16,20,.97); }
 @media (max-width: 560px) { .etapes { grid-template-columns: 1fr; } }
 
 @media (max-width: 520px) { .hero .statut .ville { display: none; } .cv-flottant { padding: 12px 16px; } }
+
+/* ---------- Matière : grain de pellicule et lumière ---------- */
+body::after { content: ""; position: fixed; inset: -60%; z-index: 70; pointer-events: none; background: url(/grain.png) repeat; animation: grain 1.1s steps(6) infinite; }
+@keyframes grain { 0% { transform: translate(0, 0); } 17% { transform: translate(-5%, 3%); } 33% { transform: translate(3%, -6%); } 50% { transform: translate(-7%, -2%); } 67% { transform: translate(6%, 5%); } 83% { transform: translate(-2%, 7%); } 100% { transform: translate(0, 0); } }
+.page-tete, .projets, .expertise-accueil, .collab, .pied, section.galerie, .index-projets {
+  background-image: radial-gradient(ellipse 55% 60% at 88% -5%, rgba(200,162,107,.13), transparent 70%), radial-gradient(ellipse 45% 50% at 0% 100%, rgba(140,93,62,.10), transparent 70%);
+}
+.clair, .appel {
+  background-image: radial-gradient(ellipse 60% 70% at 8% 0%, rgba(255,255,255,.55), transparent 65%), radial-gradient(ellipse 55% 60% at 100% 100%, rgba(140,93,62,.11), transparent 70%);
+}
+.enonce { background-image: radial-gradient(ellipse 50% 90% at 85% 10%, rgba(255,240,210,.35), transparent 70%), radial-gradient(ellipse 60% 80% at 0% 100%, rgba(140,93,62,.25), transparent 70%); }
+
+/* ---------- Bandes qui défilent ---------- */
+.defile { overflow: hidden; }
+.defile .piste { display: flex; width: max-content; animation: defile var(--duree, 70s) linear infinite; }
+.defile .piste.inverse { animation-direction: reverse; }
+.defile:hover .piste { animation-play-state: paused; }
+.defile .lot { display: flex; align-items: center; flex: none; }
+@keyframes defile { to { transform: translateX(-50%); } }
+.bande { padding: 0; background: var(--nuit); }
+.defile.photos { --duree: 90s; padding: 3px 0; }
+.defile.photos .lot { gap: 3px; padding-right: 3px; }
+.defile.photos figure { margin: 0; width: clamp(180px, 19vw, 300px); aspect-ratio: 7 / 9; overflow: hidden; background: var(--nuit-2); }
+.defile.photos img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.92); transition: transform 1.2s cubic-bezier(.2,.7,.2,1), filter .6s; }
+.defile.photos figure:hover img { transform: scale(1.06); filter: saturate(1.1); }
+.collab { padding-bottom: clamp(56px, 7vw, 100px); }
+.collab .wrap h2 { margin-bottom: clamp(20px, 3vw, 36px); }
+.defile.noms { --duree: 55s; }
+.defile.noms span { font: 600 clamp(2.6rem, 6.4vw, 6rem)/1.06 var(--display); text-transform: uppercase; letter-spacing: .01em; color: var(--ivoire); white-space: nowrap; padding: 0 .35em; }
+.defile.noms .sep { color: var(--laiton); padding: 0 .1em; }
+.defile.noms.contour span:not(.sep) { color: transparent; -webkit-text-stroke: 1.5px rgba(236,231,223,.55); }
+.defile.noms.contour { --duree: 65s; margin-top: 4px; }
+
+/* ---------- Postes visés ---------- */
+.vises { padding-bottom: 0; }
+.vises-liste { list-style: none; margin: 0; padding: 0; border-top: 1.5px solid rgba(23,21,26,.85); }
+.vises-liste li { border-bottom: 1px solid rgba(23,21,26,.18); }
+.vises-liste a { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: clamp(14px, 1.8vw, 24px) clamp(0px, 1vw, 12px); text-decoration: none; color: var(--encre); overflow: hidden; isolation: isolate; }
+.vises-liste a::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--encre); transform: scaleY(0); transform-origin: 50% 100%; transition: transform .55s cubic-bezier(.2,.7,.2,1); }
+.vises-liste .nom { font: 600 clamp(1.9rem, 4.6vw, 4.3rem)/.98 var(--display); text-transform: uppercase; letter-spacing: .005em; transition: transform .55s cubic-bezier(.2,.7,.2,1), color .3s; }
+.vises-liste .action { flex: none; display: inline-flex; align-items: center; gap: 10px; font: 600 .95rem/1 var(--body); color: var(--cedre); opacity: 0; transform: translateX(-16px); transition: opacity .35s, transform .55s cubic-bezier(.2,.7,.2,1), color .3s; }
+.vises-liste .fleche { font-size: 1.5rem; }
+.vises-liste a:hover::before, .vises-liste a:focus-visible::before { transform: scaleY(1); }
+.vises-liste a:hover .nom, .vises-liste a:focus-visible .nom { color: var(--laiton); transform: translateX(clamp(10px, 1.6vw, 24px)); }
+.vises-liste a:hover .action, .vises-liste a:focus-visible .action { opacity: 1; transform: none; color: var(--ivoire); }
+@media (hover: none), (max-width: 700px) { .vises-liste .action { opacity: 1; transform: none; font-size: 0; gap: 0; color: var(--cedre); } .vises-liste .fleche { font-size: 1.4rem; } }
+.secteurs-bande { margin-top: clamp(72px, 9vw, 130px); background: var(--encre); padding: clamp(18px, 2.2vw, 30px) 0; }
+.defile.secteurs { --duree: 45s; }
+.defile.secteurs span { font: 600 clamp(1.7rem, 3.4vw, 3rem)/1 var(--display); text-transform: uppercase; color: var(--laiton); white-space: nowrap; padding: 0 .45em; }
+.defile.secteurs .sep { color: rgba(236,231,223,.35); padding: 0; }
+
+/* ---------- Survol des rangées d'expertise ---------- */
+.domaines li { position: relative; transition: background .4s; }
+.domaines li::after { content: ""; position: absolute; left: 0; top: -1px; height: 2px; width: 100%; background: var(--laiton); transform: scaleX(0); transform-origin: 0 50%; transition: transform .7s cubic-bezier(.2,.7,.2,1); }
+.domaines li:hover::after { transform: scaleX(1); }
+.domaines li:hover h3 { color: var(--laiton); }
+.domaines h3 { transition: color .3s; }
+
+/* ---------- Apparitions au défilement ---------- */
+.anim .rv { opacity: 0; transform: translateY(34px); transition: opacity 1s cubic-bezier(.2,.7,.2,1), transform 1s cubic-bezier(.2,.7,.2,1); }
+.anim .rv.vu { opacity: 1; transform: none; }
+.anim .rv-img { clip-path: inset(14% 6% 14% 6%); transform: scale(1.04); transition: clip-path 1.3s cubic-bezier(.2,.7,.2,1), transform 1.6s cubic-bezier(.2,.7,.2,1); }
+.anim .rv-img.vu { clip-path: inset(0 0 0 0); transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  body::after, .defile .piste, .hero.lit img.hero-img { animation: none !important; }
+  .anim .rv, .anim .rv-img { opacity: 1 !important; transform: none !important; clip-path: none !important; transition: none !important; }
+}
