@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { cmd, lireJSON } from "./kv.js";
 import { REGLAGES } from "./defauts.js";
 
-const UTILISATEUR = process.env.MAIL_USER || "mauditemachine@gmail.com";
+const UTILISATEUR = process.env.MAIL_USER || "massivemedias@gmail.com";
 const MOT_DE_PASSE = (process.env.MAIL_APP_PASSWORD || "").replace(/\s+/g, "");
 export const courrielPret = () => Boolean(MOT_DE_PASSE);
 const INFO = "info@sylvainbrochu.ca";
@@ -123,6 +123,19 @@ export async function pdfCV(version) {
   return { nom, contenu: await readFile(new URL(`../_fichiers/cv-${v}.pdf`, import.meta.url)) };
 }
 
+// Texte simple vers HTML : paragraphes, liens web, courriels et téléphone cliquables.
+const echapper = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function lier(s) {
+  return s
+    .replace(/\b((?:https?:\/\/|www\.)[^\s<]+[^\s<.,;:!?)])/gi, (u) => `<a href="${/^www\./i.test(u) ? "https://" + u : u}">${u}</a>`)
+    .replace(/(^|[\s(>])([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/gi, (_, a, e) => `${a}<a href="mailto:${e}">${e}</a>`)
+    .replace(/(^|[\s(>])(\d{3}-\d{3}-\d{4})\b/g, (_, a, t) => `${a}<a href="tel:+1${t.replace(/-/g, "")}">${t}</a>`);
+}
+export function versHtml(texte) {
+  const blocs = String(texte || "").replace(/\r/g, "").trim().split(/\n{2,}/);
+  return `<div dir="ltr">${blocs.map((b) => `<p>${lier(echapper(b)).replace(/\n/g, "<br>")}</p>`).join("")}</div>`;
+}
+
 async function composer(m) {
   const r = await reglages();
   const pieces = [];
@@ -136,7 +149,7 @@ async function composer(m) {
     from: { name: r.expediteurNom || "Sylvain Brochu", address: r.expediteur || INFO },
     to: liste(m.a), cc: liste(m.cc), bcc: liste(m.cci),
     subject: m.sujet || "", text: m.texte || "",
-    html: m.html || undefined,
+    html: m.html || (m.texte ? versHtml(m.texte) : undefined),
     inReplyTo: m.enReponseA || undefined,
     references: m.references && m.references.length ? m.references : (m.enReponseA ? [m.enReponseA] : undefined),
     attachments: pieces,
@@ -225,6 +238,32 @@ export async function synchroniser(liste) {
     } finally { lockB.release(); }
     return out;
   });
+}
+
+// Crée dans Gmail les brouillons des candidatures « Brouillon prêt » qui n'en ont pas encore.
+export async function recreerBrouillons(candidatures) {
+  const r = await reglages();
+  const sig = r.signature || "";
+  const liste = (candidatures || []).filter((c) => c && c.statut === "brouillon" && /@/.test(c.courriel || "") && c.texte);
+  const out = { crees: [], deja: [] };
+  if (!liste.length) return out;
+  await avecImap(async (client) => {
+    const ch = await chemins(client);
+    const lock = await client.getMailboxLock(ch.brouillons);
+    try {
+      for (const c of liste) {
+        const ad = c.courriel.trim().toLowerCase();
+        const existe = (await client.search({ gmraw: `to:${ad}` }, { uid: true })) || [];
+        if (existe.length) { out.deja.push(ad); continue; }
+        const texte = sig && !c.texte.includes(sig.split("\n")[0] + "\n") ? `${c.texte.trimEnd()}\n\n${sig}` : c.texte;
+        const msg = await composer({ a: ad, cci: r.cci || "", sujet: c.objet || "", texte, piece: c.cv || "carriere" });
+        const brut = await new MailComposer(msg).compile().build();
+        await client.append(ch.brouillons, brut, ["\\Draft", "\\Seen"]);
+        out.crees.push(ad);
+      }
+    } finally { lock.release(); }
+  });
+  return out;
 }
 
 export async function etat() {

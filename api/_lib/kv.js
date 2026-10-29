@@ -12,7 +12,7 @@ function memCmd(args) {
   const get = () => mem.get(k);
   switch (c) {
     case "GET": return get() ?? null;
-    case "SET": mem.set(k, String(r[0])); return "OK";
+    case "SET": if (r.map((x) => String(x).toUpperCase()).includes("NX") && mem.has(k)) return null; mem.set(k, String(r[0])); return "OK";
     case "DEL": return mem.delete(k) ? 1 : 0;
     case "INCR": case "INCRBY": { const v = Number(get() || 0) + Number(r[0] || 1); mem.set(k, String(v)); return v; }
     case "EXPIRE": return 1;
