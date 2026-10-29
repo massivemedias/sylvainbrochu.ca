@@ -22,9 +22,15 @@
       "includeFiles": "api/_fichiers/**"
     },
     "api/offres.js": {
-      "maxDuration": 30
+      "maxDuration": 45
     }
   },
+  "crons": [
+    {
+      "path": "/api/offres/",
+      "schedule": "0 10 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

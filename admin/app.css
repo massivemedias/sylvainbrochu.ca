@@ -286,3 +286,79 @@ select::-ms-expand { display: none; }
 select option { background: #fff; color: var(--texte); }
 
 .btn.plein-danger { background: var(--urg); border-color: var(--urg); color: #fff; }
+
+/* ---------- Mon espace : version simplifiée (au je) ---------- */
+.groupe-nav { display: block; margin: 14px 12px 4px; font-size: .68rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6f685f; }
+.onglets a.outil { font-size: .86rem; padding: 7px 12px; color: #a59d92; }
+.onglets a.outil svg { width: 15px; height: 15px; }
+@media (max-width: 900px) { .groupe-nav { display: none; } }
+
+.btn.grand { padding: 12px 22px; font-size: 1rem; font-weight: 600; border-radius: 7px; }
+.tourne { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -1px; margin-right: 4px; animation: tourne .8s linear infinite; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tourne { animation-duration: 2.4s; } }
+
+/* Ma prochaine étape */
+.prochaine { background: var(--nuit) radial-gradient(ellipse 70% 120% at 100% 0%, rgba(200,162,107,.22), transparent 60%); color: var(--ivoire); border-radius: 12px; padding: 24px 26px 26px; margin-bottom: 16px; box-shadow: var(--ombre); display: grid; gap: 8px; justify-items: start; }
+.prochaine .etiquette { color: var(--laiton); }
+.prochaine h2 { margin: 0; font: 700 clamp(1.7rem, 3vw, 2.4rem)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.prochaine p { margin: 0 0 8px; color: #c9c1b6; max-width: 62ch; }
+.bandeau-info { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; background: var(--info-fond); border: 1px solid rgba(61,95,148,.22); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: .92rem; }
+.bandeau-info b { color: var(--info); }
+
+/* Comment je postule */
+.trois { list-style: none; counter-reset: pas; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.trois > li { counter-increment: pas; position: relative; background: var(--carte-2); border: 1px solid var(--trait); border-radius: 8px; padding: 14px 14px 14px 52px; display: grid; gap: 4px; align-content: start; font-size: .9rem; line-height: 1.45; }
+.trois > li::before { content: counter(pas); position: absolute; left: 14px; top: 13px; width: 26px; height: 26px; border-radius: 50%; background: var(--laiton); color: var(--nuit); display: grid; place-items: center; font: 700 1rem/1 var(--display); }
+.trois > li > b { font-size: .95rem; }
+.trois span { color: var(--doux); }
+.m-courriel { color: var(--info); } .m-site { color: var(--att); }
+@media (max-width: 1000px) { .trois { grid-template-columns: 1fr; } }
+
+.liste.taches .t b { white-space: normal; }
+.plus { margin: 8px 0 0; }
+.chiffres { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 18px 2px; padding: 14px 0; border-top: 1px solid var(--trait); border-bottom: 1px solid var(--trait); }
+.chiffres div { display: flex; align-items: baseline; gap: 7px; }
+.chiffres b { font: 700 1.6rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.chiffres span { font-size: .85rem; color: var(--doux); }
+.notes-carte summary, .plus-loin summary, .details-fiche summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.notes-carte summary::-webkit-details-marker, .plus-loin summary::-webkit-details-marker, .details-fiche summary::-webkit-details-marker { display: none; }
+.notes-carte summary h2, .plus-loin summary h2 { margin: 0; font: 700 1.2rem/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.notes-carte summary::after, .plus-loin summary::after, .details-fiche summary::after { content: "+"; margin-left: auto; font-weight: 700; color: var(--doux); }
+.notes-carte[open] summary::after, .plus-loin[open] summary::after, .details-fiche[open] summary::after { content: "-"; }
+.notes-carte[open] summary, .plus-loin[open] summary { margin-bottom: 12px; }
+.plus-loin { margin-top: 14px; }
+
+/* Guide « Je postule » */
+.guide { margin-bottom: 0; display: grid; gap: 8px; }
+.guide p { margin: 0; }
+.guide .mode { display: inline-flex; align-items: center; gap: 6px; justify-self: start; font: 700 1.05rem/1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--info); }
+.guide.g-courriel { background: var(--info-fond); border-color: rgba(61,95,148,.25); }
+.guide.g-site { background: var(--att-fond); border-color: rgba(154,106,12,.28); }
+.guide.g-site .mode { color: var(--att); }
+.guide.g-inconnu { background: var(--neutre-fond); border-color: var(--trait-fort); }
+.guide.g-inconnu .mode { color: var(--doux); }
+.guide.fait .actions { margin-top: 4px; }
+.pas, .guide .pas { list-style: none; counter-reset: p; margin: 2px 0 0; padding: 0; display: grid; gap: 6px; }
+.pas > li { counter-increment: p; display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; background: rgba(255,255,255,.65); border-radius: 7px; padding: 9px 10px 9px 12px; }
+.pas > li > span::before { content: counter(p) ". "; font-weight: 700; }
+.pas > li > span { flex: 1 1 260px; }
+.lettre { display: grid; gap: 10px; }
+.lettre h3, .details-fiche summary { margin: 0; font: 700 1.1rem/1 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.details-fiche { border-top: 1px solid var(--trait); padding-top: 12px; }
+.details-fiche[open] summary { margin-bottom: 12px; }
+.texte-offre { margin-top: 0; }
+.modale .fenetre > header h2 small { display: block; margin-top: 5px; font: 500 .9rem/1.3 var(--corps); text-transform: none; letter-spacing: 0; color: var(--doux); }
+
+/* Mes candidatures */
+.tab-cand .suite { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.tab-cand .suite span { font-size: .86rem; }
+.tab-cand td:nth-child(4) { min-width: 230px; }
+
+/* Offres pour moi */
+.offre h3 a { color: inherit; text-decoration: none; }
+.offre h3 a:hover { text-decoration: underline; text-decoration-color: var(--laiton); }
+.offre.neuve { border-left: 4px solid var(--laiton); }
+.p-neuve { background: var(--laiton); color: var(--nuit); vertical-align: 2px; }
+.offre .actions { align-items: center; }
+.plus-loin .carte-geo { margin-top: 4px; }

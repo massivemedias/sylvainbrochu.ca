@@ -18,7 +18,7 @@ function ilYa(t) { const s = Math.round((Date.now() - t) / 1000); if (s < 60) re
 const uid = () => Math.random().toString(36).slice(2, 10);
 const domaine = (courriel) => (String(courriel || "").split("@")[1] || "").toLowerCase();
 
-const STATUTS = [["a_preparer", "À préparer"], ["brouillon", "Brouillon prêt"], ["envoye", "Envoyé"], ["relance", "Relancé"], ["entrevue", "Entrevue"], ["offre", "Offre reçue"], ["refus", "Refus"], ["ferme", "Fermé"]];
+const STATUTS = [["a_preparer", "À envoyer"], ["brouillon", "Courriel prêt"], ["envoye", "Envoyée"], ["relance", "Relancée"], ["entrevue", "Entrevue"], ["offre", "Offre reçue"], ["refus", "Refus"], ["ferme", "Fermée"]];
 const NOM_STATUT = Object.fromEntries(STATUTS);
 const ACTIFS = ["envoye", "relance", "entrevue", "offre"];
 
@@ -27,7 +27,24 @@ const etat = {
   stats: null, statsJours: 30, statsT: 0, offres: null, mail: null,
   boite: { dossier: "recus", listes: {}, ouvert: null, q: "" },
   cvOnglet: "carriere", filtre: "actifs", rech: "", profilOffres: "tous", rechOffres: "", journal: null,
+  offresMaj: "", // "" | "en-cours" | "erreur" : mise à jour des offres en arrière-plan
 };
+
+// Offres déjà vues dans ce navigateur : celles qui n'y sont pas sont marquées « Nouvelle » pendant toute la visite.
+const VUES = (() => { try { const v = JSON.parse(localStorage.getItem("sb-offres-vues") || "null"); return v && Array.isArray(v.ids) ? { ids: new Set(v.ids), premiere: false } : { ids: new Set(), premiere: true }; } catch { return { ids: new Set(), premiere: true }; } })();
+function estNouvelle(o) {
+  if (o.sauvee) return false;
+  if (VUES.premiere) return o.date ? Date.now() - Date.parse(o.date) < 3 * 86400e3 : false;
+  return !VUES.ids.has(o.id);
+}
+function noterVues(offres) {
+  try {
+    const avant = JSON.parse(localStorage.getItem("sb-offres-vues") || "null");
+    const ids = new Set(avant && Array.isArray(avant.ids) ? avant.ids : []);
+    offres.forEach((o) => ids.add(o.id));
+    localStorage.setItem("sb-offres-vues", JSON.stringify({ ids: [...ids].slice(-3000), t: Date.now() }));
+  } catch { /* stockage indisponible : pas de marque « Nouvelle » */ }
+}
 
 // ---------- API ----------
 async function api(url, opts = {}) {
@@ -62,7 +79,9 @@ const I = {
   reglages: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
 };
 const ico = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ""}</svg>`;
-const PAGES = [["tableau", "Tableau de bord"], ["candidatures", "Candidatures"], ["courriels", "Courriels"], ["offres", "Offres d'emploi"], ["cv", "CV"], ["stats", "Statistiques"], ["modeles", "Modèles"], ["reglages", "Réglages"]];
+// Pages principales, puis outils (plus discrets dans le menu).
+const PAGES = [["tableau", "Aujourd'hui"], ["offres", "Offres pour moi"], ["candidatures", "Mes candidatures"], ["courriels", "Mes courriels"], ["cv", "Mon CV"], ["stats", "Visites de mon site"], ["modeles", "Mes modèles de courriels"], ["reglages", "Réglages"]];
+const OUTILS = ["stats", "modeles", "reglages"];
 
 // ---------- Calculs sur les candidatures ----------
 const R = () => Number(etat.d?.reglages?.relanceJours) || 7;
@@ -72,24 +91,36 @@ function relance(c) {
   const due = ajouterJours(base, R());
   return { due, enRetard: due <= jour(), jours: ecart(jour(), due) };
 }
+const nomCourt = (c) => String(c.entreprise || "").split(" (")[0];
+const methode = (c) => (c.courriel ? "courriel" : c.formulaire || c.lien ? "site" : "");
+// Ce que j'ai à faire pour chaque candidature, avec un seul bouton.
 function aFaire() {
   const out = []; const auj = jour();
   (etat.d.candidatures || []).forEach((c) => {
-    const r = relance(c);
-    if (r && r.enRetard) out.push({ type: "relance", c, tri: r.due, texte: `Relancer ${c.entreprise}`, detail: `Envoyé le ${dateCourte(c.envoyeLe)}, sans réponse` });
-    if (c.reponseLe && !c.reponseTraitee && ACTIFS.includes(c.statut)) out.push({ type: "reponse", c, tri: c.reponseLe, texte: `Réponse de ${c.entreprise}`, detail: `Reçue le ${dateCourte(c.reponseLe)}` });
-    if (c.statut === "a_preparer") out.push({ type: "echeance", c, tri: (c.echeance && c.echeance >= auj ? c.echeance : "9999") + (c.priorite || 3), texte: `Postuler chez ${c.entreprise}`, detail: `${c.poste || ""}${c.echeance && c.echeance >= auj ? ` | date limite le ${dateCourte(c.echeance)}` : ""} | ${c.courriel ? "par courriel" : "sur le site"}` });
-    if (c.entrevueLe && c.entrevueLe.slice(0, 10) >= auj) out.push({ type: "entrevue", c, tri: c.entrevueLe, texte: `Entrevue : ${c.entreprise}`, detail: `Le ${dateCourte(c.entrevueLe)}${c.entrevueLe.length > 10 ? " à " + c.entrevueLe.slice(11, 16) : ""}` });
+    const r = relance(c); const ent = nomCourt(c);
+    if (c.entrevueLe && c.entrevueLe.slice(0, 10) >= auj) out.push({ type: "entrevue", c, tri: c.entrevueLe, texte: `Mon entrevue chez ${ent}`, detail: `Le ${dateCourte(c.entrevueLe)}${c.entrevueLe.length > 10 ? " à " + c.entrevueLe.slice(11, 16) : ""}. Je relis l'offre et ma lettre avant.`, bouton: "Ouvrir" });
+    if (c.reponseLe && !c.reponseTraitee && ACTIFS.includes(c.statut)) out.push({ type: "reponse", c, tri: c.reponseLe, texte: `${ent} m'a répondu`, detail: `Le ${dateCourte(c.reponseLe)}. Je lis la réponse dans mes courriels.`, bouton: "Lire la réponse" });
+    if (r && r.enRetard) out.push({ type: "relance", c, tri: r.due, texte: `Relancer ${ent}`, detail: `J'ai postulé le ${dateCourte(c.envoyeLe)}, pas de réponse. Mon courriel de relance est prêt.`, bouton: "Préparer ma relance" });
+    if (c.statut === "a_preparer") {
+      const m = methode(c);
+      out.push({ type: "postuler", c, tri: (c.echeance && c.echeance >= auj ? c.echeance : "9999") + (c.priorite || 3), texte: `Postuler chez ${ent}`, detail: `${c.poste ? posteCourt(c.poste) + ". " : ""}${m === "courriel" ? "Par courriel." : m === "site" ? "Sur le site de l'employeur." : ""}${c.echeance && c.echeance >= auj ? ` Date limite : ${dateCourte(c.echeance)}` : ""}`, bouton: "Je postule" });
+    }
+    if (c.statut === "brouillon") out.push({ type: "brouillon", c, tri: "9" + (c.priorite || 3), texte: `Envoyer ma candidature chez ${ent}`, detail: "Mon courriel est déjà prêt, mon CV est joint. Je le relis et je l'envoie.", bouton: "Relire et envoyer" });
   });
-  const brouillons = (etat.d.candidatures || []).filter((c) => c.statut === "brouillon");
-  if (brouillons.length) out.push({ type: "brouillon", c: brouillons[0], tri: "9", texte: `${brouillons.length} candidature${brouillons.length > 1 ? "s" : ""} prête${brouillons.length > 1 ? "s" : ""} à envoyer`, detail: brouillons.slice(0, 4).map((c) => c.entreprise.split(" (")[0]).join(", ") + (brouillons.length > 4 ? "..." : "") + " : brouillons dans Gmail" });
-  const ordre = { entrevue: 0, reponse: 1, relance: 2, echeance: 3, brouillon: 4 };
+  const ordre = { entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
   return out.sort((a, b) => ordre[a.type] - ordre[b.type] || String(a.tri).localeCompare(String(b.tri)));
 }
+const posteCourt = (p) => { const s = String(p || "").replace(/\s+/g, " ").trim(); return s.length > 70 ? s.slice(0, 68).replace(/\s+\S*$/, "") + "..." : s; };
 function noter(c, texte) { (c.historique = c.historique || []).unshift({ date: jour(), texte }); }
 const candParCourriel = (adresse) => { const a = String(adresse || "").toLowerCase(); const d = domaine(a); return (etat.d.candidatures || []).find((c) => c.courriel && (c.courriel.toLowerCase() === a || (d && !/gmail|hotmail|outlook|yahoo|videotron|icloud/.test(d) && domaine(c.courriel) === d))); };
 
 // ---------- Démarrage ----------
+// Courriels factices lus par erreur sur certaines pages d'offres (ex. serviceomp@test957.com) : on les retire.
+function nettoyer() {
+  const FAUX = /@(test\d*\.|example\.|exemple\.|domain\.)/i; let n = 0;
+  (etat.d.candidatures || []).forEach((c) => { if (c.courriel && FAUX.test(c.courriel) && !c.envoyeLe) { c.courriel = ""; if (!c.formulaire && c.lien) c.formulaire = c.lien; n++; } });
+  if (n) sauver("candidatures");
+}
 async function demarrer() {
   try {
     const s = await api("/api/auth/");
@@ -99,6 +130,7 @@ async function demarrer() {
     etat.u = s.utilisateur;
     const r = await api("/api/donnees/?cle=tout");
     etat.d = r.donnees;
+    nettoyer();
     rendreCoque();
     window.addEventListener("hashchange", allerA);
     // Quand on revient sur l'onglet, on recharge les données pour ne jamais travailler sur une copie périmée.
@@ -129,11 +161,11 @@ function afficherConnexion(message = "") {
   const pasConfig = !etat.clientId || etat.clientId.startsWith("__");
   $("#app").innerHTML = `<div class="connexion"><div class="boite">
     <div class="sb">SB</div>
-    <h1>Admin<br>Sylvain Brochu</h1>
-    <p>Recherche d'emploi : candidatures, courriels de info@sylvainbrochu.ca, offres, CV et statistiques du site.</p>
+    <h1>Ma recherche<br>d'emploi</h1>
+    <p>Mes offres, mes candidatures, mes courriels de info@sylvainbrochu.ca et mon CV, au même endroit.</p>
     ${message ? `<p class="alerte">${E(message)}</p>` : ""}
     ${pasConfig ? `<p class="alerte">La connexion Google n'est pas encore configurée.</p>` : `<div id="g-btn"></div>`}
-    <p class="note">Accès réservé à Sylvain et à Mika.</p>
+    <p class="note">Espace privé de Sylvain Brochu.</p>
     <p class="alerte" id="refus" hidden></p>
   </div></div>`;
   if (pasConfig) return;
@@ -166,8 +198,8 @@ function rendreCoque() {
   const u = etat.u;
   $("#app").innerHTML = `<div class="coque">
     <aside class="cote">
-      <a class="marque" href="#tableau"><span class="sb">SB</span><span><b>Admin</b><small>Recherche d'emploi</small></span></a>
-      <nav class="onglets" aria-label="Sections">${PAGES.map(([id, nom]) => `<a href="#${id}" data-p="${id}">${ico(id)}<span>${nom}</span><i class="compte" data-c="${id}" hidden></i></a>`).join("")}</nav>
+      <a class="marque" href="#tableau"><span class="sb">SB</span><span><b>Mon espace</b><small>Ma recherche d'emploi</small></span></a>
+      <nav class="onglets" aria-label="Sections">${PAGES.map(([id, nom]) => `${id === OUTILS[0] ? '<span class="groupe-nav">Outils</span>' : ""}<a href="#${id}" data-p="${id}" class="${OUTILS.includes(id) ? "outil" : ""}">${ico(id)}<span>${nom}</span><i class="compte" data-c="${id}" hidden></i></a>`).join("")}</nav>
       <div class="qui">${u.photo ? `<img src="${E(u.photo)}" alt="" referrerpolicy="no-referrer">` : `<span class="avatar">${E((u.nom || u.email)[0])}</span>`}<span title="${E(u.email)}">${E(u.nom || u.email)}</span><button type="button" id="deco">Sortir</button></div>
     </aside>
     <main class="principal" id="page"></main>
@@ -175,10 +207,12 @@ function rendreCoque() {
   $("#deco").onclick = deconnecter;
 }
 function majCompteurs() {
-  const n = aFaire().filter((x) => ["relance", "reponse", "echeance", "entrevue"].includes(x.type)).length;
+  const n = aFaire().length;
   const el = $('[data-c="tableau"]'); if (el) { el.hidden = !n; el.textContent = n; }
   const nl = (etat.boite.listes.recus || []).filter((m) => !m.lu).length;
   const em = $('[data-c="courriels"]'); if (em) { em.hidden = !nl; em.textContent = nl; }
+  const no = etat.offres ? etat.offres.offres.filter((o) => estNouvelle(o) && !(etat.d["offres-masquees"] || []).includes(o.id)).length : 0;
+  const eo = $('[data-c="offres"]'); if (eo) { eo.hidden = !no; eo.textContent = no; eo.title = `${no} nouvelle${no > 1 ? "s" : ""} offre${no > 1 ? "s" : ""}`; }
 }
 function allerA() {
   const p = (location.hash || "#tableau").slice(1).split("/")[0];
@@ -206,10 +240,35 @@ async function chargerBoite(dossier, force = false) {
   etat.boite.listes[dossier] = r.messages; majCompteurs();
   return r.messages;
 }
+// Les offres gardées s'affichent tout de suite ; si elles ont plus d'une heure, une mise à jour part en arrière-plan.
 async function chargerOffres(force = false) {
   if (!force && etat.offres) return etat.offres;
-  etat.offres = await api(`/api/offres/${force ? "?rafraichir=1" : ""}`);
+  if (force) { await mettreAJourOffres(true); return etat.offres; }
+  etat.offres = await api("/api/offres/");
+  if (Date.now() - Date.parse(etat.offres.maj) > 3600e3) mettreAJourOffres();
   return etat.offres;
+}
+let majOffresEnCours = null;
+function mettreAJourOffres(attendre = false) {
+  if (!majOffresEnCours) {
+    etat.offresMaj = "en-cours"; afficherEtatOffres();
+    majOffresEnCours = api("/api/offres/?rafraichir=1").then((r) => {
+      const avant = new Set((etat.offres?.offres || []).map((o) => o.id));
+      const neuves = r.offres.filter((o) => !avant.has(o.id)).length;
+      etat.offres = r; etat.offresMaj = "";
+      if (avant.size && neuves) toast(`${neuves} nouvelle${neuves > 1 ? "s" : ""} offre${neuves > 1 ? "s" : ""} pour moi.`);
+      if (etat.page === "offres") listerOffres(); else if (etat.page === "tableau") offresAccueil();
+      majCompteurs();
+    }).catch(() => { etat.offresMaj = "erreur"; afficherEtatOffres(); }).finally(() => { majOffresEnCours = null; });
+  }
+  return attendre ? majOffresEnCours : null;
+}
+function afficherEtatOffres() {
+  const el = $("#etat-off"); if (!el || !etat.offres && etat.offresMaj !== "en-cours") return;
+  const o = etat.offres;
+  el.innerHTML = etat.offresMaj === "en-cours" ? `<span class="tourne"></span> Je cherche les nouvelles offres...`
+    : etat.offresMaj === "erreur" ? `Mise à jour impossible pour l'instant. Offres du ${o ? dateHeure(o.maj) : ""}.`
+    : o ? `Mises à jour ${ilYa(Date.parse(o.maj))}, sur ${o.etat.filter((x) => x.ok).length} recherches.` : "";
 }
 
 // ---------- Graphique ----------
@@ -268,66 +327,77 @@ function pTableau() {
   const c = etat.d.candidatures || [];
   const envoyees = c.filter((x) => x.envoyeLe).length;
   const reponses = c.filter((x) => x.reponseLe).length;
-  const relances = c.filter((x) => relance(x)?.enRetard).length;
+  const entrevues = c.filter((x) => x.entrevueLe || ["entrevue", "offre"].includes(x.statut)).length;
   const taches = aFaire();
-  $("#page").innerHTML = entete(`Bonjour ${E((etat.u.nom || "").split(" ")[0])}`, `Ce qui compte aujourd'hui, ${new Date().toLocaleDateString("fr-CA", { weekday: "long", day: "numeric", month: "long" })}.`,
-    `<a class="btn" href="/" target="_blank" rel="noopener">Voir le site</a><button class="btn laiton" data-act="nouveau-courriel">Nouveau courriel</button>`) + `
-  <div class="kpis">
-    <div class="kpi direct"><b><span class="point"></span><span id="k-live">-</span></b><span>En ligne sur le site</span></div>
-    <div class="kpi"><b id="k-vis">-</b><span>Visiteurs, 30 jours</span></div>
-    <div class="kpi"><b id="k-cv">-</b><span>CV téléchargés, 30 jours</span></div>
-    <div class="kpi"><b>${envoyees}</b><span>Candidatures envoyées</span></div>
-    <div class="kpi"><b>${reponses}</b><span>Réponses reçues</span></div>
-    <div class="kpi ${relances ? "alerte" : ""}"><b>${relances}</b><span>Relances à faire</span></div>
-  </div>
-  ${modeEmploi()}
+  const prenom = (etat.u.nom || "").split(" ")[0];
+  const t0 = taches[0];
+  const notes = typeof etat.d.notes === "string" ? etat.d.notes : "";
+  const date = new Date().toLocaleDateString("fr-CA", { weekday: "long", day: "numeric", month: "long" });
+  $("#page").innerHTML = entete(`Bonjour ${E(prenom)}`, `${date[0].toUpperCase() + date.slice(1)}. ${taches.length ? `J'ai ${taches.length} chose${taches.length > 1 ? "s" : ""} à faire.` : "Rien d'urgent aujourd'hui."}`,
+    `<a class="btn" href="/" target="_blank" rel="noopener">Voir mon site</a>`) + `
+  <section class="prochaine">
+    <span class="etiquette">Ma prochaine étape</span>
+    ${t0 ? `<h2>${E(t0.texte)}</h2><p>${E(t0.detail)}</p><div class="actions">${boutonTache(t0, true)}</div>`
+      : `<h2>Choisir une offre qui me plaît</h2><p>Des offres sont cherchées pour moi chaque jour. Sur celle qui m'intéresse, je clique « Je postule » : ma lettre et mon CV sont prêts.</p><div class="actions"><a class="btn laiton grand" href="#offres">Voir les offres pour moi</a></div>`}
+  </section>
+  <div id="d-mails"></div>
+  ${commentPostuler()}
   <div class="grille g2">
-    <section class="carte"><header><h2>À faire</h2><a class="btn petit" href="#candidatures">Candidatures</a></header>
-      ${taches.length ? `<ul class="liste">${taches.slice(0, 9).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>` : `<p class="vide">Rien d'urgent. Les relances apparaissent ici ${R()} jours après un envoi sans réponse.</p>`}
+    <section class="carte"><header><h2>Ensuite</h2><a class="btn petit" href="#candidatures">Mes candidatures</a></header>
+      ${taches.length > 1 ? `<ul class="liste taches">${taches.slice(1, 6).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>${taches.length > 6 ? `<p class="aide plus">Et ${taches.length - 6} autre${taches.length - 6 > 1 ? "s" : ""} dans <a href="#candidatures">Mes candidatures</a>.</p>` : ""}` : `<p class="vide">Rien d'autre pour l'instant.</p>`}
     </section>
-    <section class="carte"><header><h2>Derniers courriels reçus</h2><a class="btn petit" href="#courriels">Boîte info@</a></header><div id="d-mails"><p class="vide">Chargement...</p></div></section>
-    <section class="carte"><header><h2>Visites du site</h2><a class="btn petit" href="#stats">Détails</a></header><div id="d-graph"><p class="vide">Chargement...</p></div></section>
-    <section class="carte"><header><h2>Nouvelles offres</h2><a class="btn petit" href="#offres">Toutes les offres</a></header><div id="d-offres"><p class="vide">Chargement...</p></div></section>
-    <section class="carte" style="grid-column:1/-1"><header><h2>Notes</h2><span class="aide">Enregistrées automatiquement, visibles par Sylvain et Mika.</span></header>
-      <textarea class="notes-libres" id="notes" placeholder="Contacts à appeler, idées, suivis...">${E(typeof etat.d.notes === "string" ? etat.d.notes : "")}</textarea></section>
-  </div>`;
+    <section class="carte"><header><h2>Nouvelles offres pour moi</h2><a class="btn petit" href="#offres">Toutes les offres</a></header><div id="d-offres"><p class="vide">Je cherche les offres...</p></div></section>
+  </div>
+  <div class="chiffres">
+    <div><b>${envoyees}</b><span>candidature${envoyees > 1 ? "s" : ""} envoyée${envoyees > 1 ? "s" : ""}</span></div>
+    <div><b>${reponses}</b><span>réponse${reponses > 1 ? "s" : ""} reçue${reponses > 1 ? "s" : ""}</span></div>
+    <div><b>${entrevues}</b><span>entrevue${entrevues > 1 ? "s" : ""}</span></div>
+    <div><b id="k-vis">-</b><span>visiteurs sur mon site, 30 jours</span></div>
+    <div><b id="k-cv">-</b><span>CV téléchargés, 30 jours</span></div>
+  </div>
+  <details class="carte notes-carte" ${notes.trim() ? "open" : ""}><summary><h2>Mes notes</h2><span class="aide">Enregistrées automatiquement</span></summary>
+    <textarea class="notes-libres" id="notes" placeholder="Contacts à appeler, idées, suivis...">${E(notes)}</textarea></details>`;
   $("#notes").oninput = (e) => { etat.d.notes = e.target.value; sauver("notes", 900); };
   const me = $(".mode-emploi"); if (me) me.ontoggle = () => { try { localStorage.setItem("sb-mode-emploi", me.open ? "ouvert" : "ferme"); } catch { /* stockage indisponible */ } };
   chargerStats(30).then((s) => {
     if (etat.page !== "tableau") return;
-    $("#k-live").textContent = s.enLigne.length; $("#k-vis").textContent = s.totaux.visiteurs; $("#k-cv").textContent = s.totaux.cv;
-    $("#d-graph").innerHTML = graphique(s.serie.slice(-14));
-  }).catch((e) => { const el = $("#d-graph"); if (el) el.innerHTML = `<p class="vide">${E(e.message)}</p>`; });
-  const dm = $("#d-mails");
-  if (etat.mail && !etat.mail.pret) dm.innerHTML = blocConfigCourriel(true);
-  else chargerBoite("recus").then((l) => {
-    if (etat.page !== "tableau") return;
-    $("#d-mails").innerHTML = l.length ? `<ul class="liste">${l.slice(0, 6).map((m) => `<li><div class="t"><b>${m.lu ? "" : "● "}${E(m.de[0]?.nom || m.de[0]?.courriel || "")}</b><small>${E(m.sujet)}</small></div><div class="actions"><span class="aide">${dateHeure(m.date)}</span><a class="btn petit" href="#courriels" data-ouvrir="recus:${m.uid}">Lire</a></div></li>`).join("")}</ul>` : `<p class="vide">Aucun courriel reçu pour l'instant.</p>`;
-  }).catch((e) => { const el = $("#d-mails"); if (el) el.innerHTML = e.code === "COURRIEL_ABSENT" ? blocConfigCourriel(true) : `<p class="vide">${E(e.message)}</p>`; });
-  chargerOffres().then((o) => {
-    if (etat.page !== "tableau") return;
-    const masq = new Set(etat.d["offres-masquees"] || []);
-    const l = o.offres.filter((x) => !masq.has(x.id)).slice(0, 6);
-    $("#d-offres").innerHTML = l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise)}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Temporaire" : "Carrière"}</small></div><a class="btn petit" href="${E(x.url)}" target="_blank" rel="noopener">Voir</a></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`;
-  }).catch((e) => { const el = $("#d-offres"); if (el) el.innerHTML = `<p class="vide">${E(e.message)}</p>`; });
+    $("#k-vis").textContent = s.totaux.visiteurs; $("#k-cv").textContent = s.totaux.cv;
+  }).catch(() => {});
+  if (etat.mail?.pret) chargerBoite("recus").then(courrielsAccueil).catch(() => {});
+  chargerOffres().then(offresAccueil).catch((e) => { const el = $("#d-offres"); if (el) el.innerHTML = `<p class="vide">${E(e.message)}</p>`; });
 }
-function modeEmploi() {
+function courrielsAccueil(l) {
+  const el = $("#d-mails"); if (!el || etat.page !== "tableau") return;
+  const nl = (l || []).filter((m) => !m.lu);
+  el.innerHTML = nl.length ? `<div class="bandeau-info"><span><b>J'ai ${nl.length} nouveau${nl.length > 1 ? "x" : ""} courriel${nl.length > 1 ? "s" : ""}</b> sur info@sylvainbrochu.ca${nl[0] ? ` : ${E(nl[0].de[0]?.nom || nl[0].de[0]?.courriel || "")}, « ${E(nl[0].sujet)} »` : ""}${nl.length > 1 ? "..." : ""}</span><a class="btn petit plein" href="#courriels">Lire mes courriels</a></div>` : "";
+}
+function offresAccueil() {
+  const el = $("#d-offres"); if (!el || etat.page !== "tableau" || !etat.offres) return;
+  const masq = new Set(etat.d["offres-masquees"] || []);
+  const liees = new Set((etat.d.candidatures || []).map((c) => c.lien).filter(Boolean));
+  const dispo = etat.offres.offres.filter((x) => !masq.has(x.id) && !liees.has(x.url));
+  const neuves = dispo.filter(estNouvelle).sort((a, b) => (a.profil === "carriere" ? 0 : 1) - (b.profil === "carriere" ? 0 : 1));
+  const l = (neuves.length ? neuves : dispo).slice(0, 5);
+  el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} depuis ma dernière visite.</p>` : `<p class="aide">Pas de nouvelle offre depuis ma dernière visite. Les plus récentes :</p>`)
+    + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
+}
+function commentPostuler() {
   let ferme = false; try { ferme = localStorage.getItem("sb-mode-emploi") === "ferme"; } catch { /* stockage indisponible */ }
   return `<details class="carte mode-emploi" ${ferme ? "" : "open"}>
-    <summary><h2>Comment postuler</h2><span class="aide">4 étapes, la fiche se remplit toute seule</span></summary>
-    <ol class="etapes">
-      <li><b>Choisir une offre.</b> Dans <a href="#offres">Offres d'emploi</a>, « Lire l'offre » affiche le texte complet. Si elle plaît : « Ajouter aux candidatures ».</li>
-      <li><b>Relire la fiche.</b> Elle se remplit seule : texte de l'offre, lettre adaptée au poste, CV à joindre, date limite, et la façon de postuler (courriel ou site).</li>
-      <li><b>Envoyer.</b> Par courriel : « Préparer le courriel », le CV est joint, on vérifie et on envoie. Sur un site : « Postuler sur le site », la lettre est copiée, on la colle dans le formulaire et on joint le CV.</li>
-      <li><b>Marquer envoyée</b> (seulement pour les sites, les courriels se marquent tout seuls). Une relance est proposée ici ${R()} jours plus tard si personne ne répond.</li>
+    <summary><h2>Comment je postule</h2><span class="aide">3 étapes, tout est préparé pour moi</span></summary>
+    <ol class="trois">
+      <li><b>Je choisis une offre</b><span>Dans <a href="#offres">Offres pour moi</a>, je clique « Je postule » sur celle qui m'intéresse.</span></li>
+      <li><b>Je suis le guide</b><span><b class="m-courriel">Par courriel</b> : mon courriel est prêt, mon CV est joint, je le relis et je l'envoie.<br><b class="m-site">Sur le site de l'employeur</b> : je copie ma lettre, je télécharge mon CV, j'ouvre le formulaire et je les colle.</span></li>
+      <li><b>C'est envoyé</b><span>Pour un site, je clique « J'ai postulé ». Sans réponse après ${R()} jours, je vois ici « Relancer » avec le courriel déjà écrit.</span></li>
     </ol></details>`;
 }
-function boutonTache(t) {
-  if (t.type === "relance") return `<button class="btn petit laiton" data-act="relancer" data-id="${t.c.id}">Préparer la relance</button>`;
-  if (t.type === "brouillon") return `<a class="btn petit" href="#courriels" data-dossier="brouillons">Brouillons</a>`;
-  if (t.type === "echeance") return `<button class="btn petit laiton" data-act="fiche" data-id="${t.c.id}">Ouvrir la fiche</button>`;
-  if (t.type === "reponse") return `<button class="btn petit" data-act="fiche" data-id="${t.c.id}">Ouvrir</button>`;
-  return `<button class="btn petit" data-act="fiche" data-id="${t.c.id}">Ouvrir</button>`;
+function boutonTache(t, grand = false) {
+  const g = grand ? " grand" : " petit";
+  if (t.type === "relance") return `<button class="btn laiton${g}" data-act="relancer" data-id="${t.c.id}">${t.bouton}</button>`;
+  if (t.type === "reponse") return `<button class="btn laiton${g}" data-act="lire-reponse" data-id="${t.c.id}">${t.bouton}</button>`;
+  if (t.type === "brouillon") return `<button class="btn laiton${g}" data-act="voir-brouillon" data-id="${t.c.id}">${t.bouton}</button>`;
+  if (t.type === "postuler") return `<button class="btn laiton${g}" data-act="fiche" data-id="${t.c.id}">${t.bouton}</button>`;
+  return `<button class="btn${g}" data-act="fiche" data-id="${t.c.id}">${t.bouton || "Ouvrir"}</button>`;
 }
 
 // ======================================================================
@@ -335,28 +405,41 @@ function boutonTache(t) {
 // ======================================================================
 function pCandidatures() {
   const toutes = etat.d.candidatures || [];
+  const parC = new Map(); aFaire().forEach((t) => { if (!parC.has(t.c.id)) parC.set(t.c.id, t); });
   const compte = (f) => toutes.filter(f).length;
-  const FILTRES = [["actifs", "En cours", (c) => !["refus", "ferme"].includes(c.statut)], ["relances", "Relances à faire", (c) => relance(c)?.enRetard], ...STATUTS.map(([k, n]) => [k, n, (c) => c.statut === k]), ["temporaire", "Temporaire", (c) => c.type === "temporaire"], ["tout", "Tout", () => true]];
+  const FILTRES = [
+    ["actifs", "En cours", (c) => !["refus", "ferme"].includes(c.statut)],
+    ["a_faire", "À faire maintenant", (c) => parC.has(c.id)],
+    ["a_envoyer", "À envoyer", (c) => ["a_preparer", "brouillon"].includes(c.statut)],
+    ["envoyees", "Envoyées", (c) => ["envoye", "relance"].includes(c.statut)],
+    ["entrevues", "Entrevues et offres", (c) => ["entrevue", "offre"].includes(c.statut)],
+    ["terminees", "Terminées", (c) => ["refus", "ferme"].includes(c.statut)],
+    ["tout", "Tout", () => true]];
   const f = FILTRES.find((x) => x[0] === etat.filtre) || FILTRES[0];
   const q = etat.rech.toLowerCase();
+  const ordre = { entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
   const liste = toutes.filter(f[2]).filter((c) => !q || `${c.entreprise} ${c.poste} ${c.ville} ${c.courriel}`.toLowerCase().includes(q))
-    .sort((a, b) => (relance(b)?.enRetard ? 1 : 0) - (relance(a)?.enRetard ? 1 : 0) || (a.priorite || 3) - (b.priorite || 3) || String(b.envoyeLe || "").localeCompare(String(a.envoyeLe || "")));
-  $("#page").innerHTML = entete("Candidatures", `Suivi des envois depuis info@sylvainbrochu.ca. Une relance est proposée ${R()} jours après un envoi sans réponse.`,
-    `<button class="btn" data-act="synchro">Synchroniser avec Gmail</button><button class="btn laiton" data-act="nouvelle">Nouvelle candidature</button>`) + `
-  <div class="filtres">${FILTRES.map(([k, n, fn]) => `<button type="button" data-filtre="${k}" aria-pressed="${k === etat.filtre}">${n} <b>${compte(fn)}</b></button>`).join("")}</div>
+    .sort((a, b) => (parC.has(a.id) ? ordre[parC.get(a.id).type] : 9) - (parC.has(b.id) ? ordre[parC.get(b.id).type] : 9) || (a.priorite || 3) - (b.priorite || 3) || String(b.envoyeLe || "").localeCompare(String(a.envoyeLe || "")));
+  const suite = (c) => {
+    const t = parC.get(c.id);
+    if (t) return `<div class="suite"><span>${E(t.type === "postuler" ? (methode(c) === "courriel" ? "Postuler par courriel" : methode(c) === "site" ? "Postuler sur le site" : "Postuler") : t.type === "brouillon" ? "Mon courriel est prêt à envoyer" : t.type === "relance" ? "Relancer, pas de réponse" : t.type === "reponse" ? "Lire la réponse" : "Entrevue " + dateCourte(c.entrevueLe))}</span>${boutonTache(t)}</div>`;
+    const r = relance(c);
+    if (r) return `<span class="aide">J'attends une réponse. Relance le ${dateCourte(r.due)}.</span>`;
+    if (c.statut === "offre") return `<span class="aide">Offre reçue.</span>`;
+    if (["refus", "ferme"].includes(c.statut)) return `<span class="aide">Terminée.</span>`;
+    return `<span class="aide">-</span>`;
+  };
+  $("#page").innerHTML = entete("Mes candidatures", "Toutes mes candidatures et la prochaine étape pour chacune.",
+    `<button class="btn" data-act="synchro" title="Retrouve dans Gmail mes envois, mes relances et les réponses reçues">Vérifier mes envois et réponses</button><button class="btn laiton" data-act="nouvelle">Ajouter une candidature</button>`) + `
+  <div class="filtres">${FILTRES.map(([k, n, fn]) => `<button type="button" data-filtre="${k}" aria-pressed="${k === f[0]}">${n} <b>${compte(fn)}</b></button>`).join("")}</div>
   <div class="barre-outils"><input class="recherche" type="search" id="rech" placeholder="Chercher une entreprise, un poste..." value="${E(etat.rech)}"><span class="aide">${liste.length} candidature${liste.length > 1 ? "s" : ""}</span></div>
-  <div class="tableau-wrap"><table class="tab"><thead><tr><th>Entreprise et poste</th><th>Statut</th><th>CV</th><th>Envoyé</th><th>Relance</th><th>Réponse</th><th></th></tr></thead><tbody>
-  ${liste.map((c) => { const r = relance(c); return `<tr>
-    <td class="ent"><b>${E(c.entreprise)}</b><small>${E(c.poste)}${c.ville ? " | " + E(c.ville) : ""}${c.echeance ? ` | <span class="${ecart(jour(), c.echeance) <= 7 ? "ko-txt" : ""}">limite ${dateCourte(c.echeance)}</span>` : ""}</small></td>
-    <td><select data-statut="${c.id}" aria-label="Statut">${STATUTS.map(([k, n]) => `<option value="${k}" ${k === c.statut ? "selected" : ""}>${n}</option>`).join("")}</select></td>
-    <td><span class="pastille">${c.cv === "barman" ? "Barman" : "Carrière"}</span></td>
+  <div class="tableau-wrap"><table class="tab tab-cand"><thead><tr><th>Entreprise et poste</th><th>Où j'en suis</th><th>Envoyée le</th><th>Prochaine étape</th><th></th></tr></thead><tbody>
+  ${liste.map((c) => `<tr>
+    <td class="ent"><b>${E(c.entreprise)}</b><small>${E(posteCourt(c.poste))}${c.ville ? " | " + E(c.ville) : ""}${c.echeance && c.echeance >= jour() ? ` | <span class="${ecart(jour(), c.echeance) <= 7 ? "ko-txt" : ""}">limite ${dateCourte(c.echeance)}</span>` : ""}</small></td>
+    <td><select data-statut="${c.id}" aria-label="Où j'en suis">${STATUTS.map(([k, n]) => `<option value="${k}" ${k === c.statut ? "selected" : ""}>${n}</option>`).join("")}</select></td>
     <td>${c.envoyeLe ? dateCourte(c.envoyeLe) : '<span class="aide">-</span>'}</td>
-    <td>${r ? (r.enRetard ? `<span class="pastille p-urgent">À faire</span>` : `<span class="aide">${dateCourte(r.due)}</span>`) : '<span class="aide">-</span>'}</td>
-    <td>${c.reponseLe ? `<span class="pastille p-reponse">${dateCourte(c.reponseLe)}</span>` : '<span class="aide">-</span>'}</td>
-    <td><div class="actions" style="flex-wrap:nowrap">
-      ${r && r.enRetard ? `<button class="btn petit laiton" data-act="relancer" data-id="${c.id}">Relancer</button>` : ""}
-      ${["a_preparer", "brouillon"].includes(c.statut) && (c.courriel || c.formulaire || c.lien) ? `<button class="btn petit laiton" data-act="preparer" data-id="${c.id}" title="${c.courriel ? "Prépare le courriel avec le CV joint" : "Copie la lettre et ouvre le site de l'employeur"}">${c.courriel ? "Préparer le courriel" : "Postuler sur le site"}</button>${!c.courriel ? `<button class="btn petit" data-act="envoyee" data-id="${c.id}">Envoyée</button>` : ""}` : ""}
-      <button class="btn petit" data-act="fiche" data-id="${c.id}">Ouvrir</button><button class="btn petit danger" data-act="supprimer-cand" data-id="${c.id}" title="Supprimer cette candidature" aria-label="Supprimer la candidature ${E(c.entreprise)}">Supprimer</button></div></td></tr>`; }).join("") || `<tr><td colspan="7" class="vide" style="text-align:center;padding:30px">Aucune candidature dans ce filtre.</td></tr>`}
+    <td>${suite(c)}</td>
+    <td><div class="actions" style="flex-wrap:nowrap;justify-content:flex-end"><button class="btn petit" data-act="fiche" data-id="${c.id}">Ouvrir</button><button class="btn petit lien danger" data-act="supprimer-cand" data-id="${c.id}" title="Supprimer cette candidature" aria-label="Supprimer la candidature ${E(c.entreprise)}">Supprimer</button></div></td></tr>`).join("") || `<tr><td colspan="5" class="vide" style="text-align:center;padding:30px">Aucune candidature ici.${f[0] === "actifs" ? ` <a href="#offres">Voir les offres pour moi</a>` : ""}</td></tr>`}
   </tbody></table></div>`;
   $("#rech").oninput = (e) => { etat.rech = e.target.value; const pos = e.target.selectionStart; pCandidatures(); const r = $("#rech"); r.focus(); r.setSelectionRange(pos, pos); };
 }
@@ -370,71 +453,123 @@ function changerStatut(c, s) {
 }
 
 const detailsEssayes = new Set(); // une lecture automatique par fiche et par session
+const cvDe = (c) => (c.cv === "barman" ? { v: "barman", nom: "barman", fichier: "Sylvain-Brochu-CV-Bar.pdf" } : { v: "carriere", nom: "carrière", fichier: "Sylvain-Brochu-CV.pdf" });
+// Le guide en haut de la fiche : comment je postule à cette offre, étape par étape, avec les boutons au bon endroit.
 function guidePostuler(c) {
-  if (ACTIFS.includes(c.statut) || ["refus", "ferme"].includes(c.statut)) return c.envoyeLe ? `<div class="guide fait"><b>Candidature envoyée le ${dateCourte(c.envoyeLe)}.</b> ${relance(c) ? `Relance proposée le ${dateCourte(relance(c).due)}.` : ""}</div>` : "";
-  const cv = c.cv === "barman" ? "barman" : "carrière";
-  if (c.courriel) return `<div class="guide"><b>Comment postuler : par courriel à ${E(c.courriel)}</b><ol><li>Relis la lettre plus bas, ajuste si besoin.</li><li>Clique « Préparer le courriel » : le CV ${cv} est joint tout seul.</li><li>Vérifie et envoie. La candidature passe en « Envoyé » automatiquement.</li></ol></div>`;
-  if (c.formulaire || c.lien) return `<div class="guide"><b>Comment postuler : sur le site de l'employeur</b><ol><li>Relis la lettre plus bas, ajuste si besoin.</li><li>Clique « Postuler sur le site » : la lettre est copiée et le site s'ouvre.</li><li>Sur le site : colle la lettre (Cmd+V) et joins le CV ${cv} (bouton « CV ${cv} » pour le télécharger).</li><li>Une fois envoyé, reviens ici et clique « Marquer envoyée ».</li></ol></div>`;
-  return `<div class="guide"><b>Il manque le courriel du recruteur ou le lien de l'offre</b> pour savoir comment postuler.</div>`;
+  const cv = cvDe(c);
+  const boutonCV = `<a class="btn petit" href="/api/cv/?v=${cv.v}" download="${cv.fichier}">Télécharger mon CV</a>`;
+  if (["envoye", "relance", "entrevue", "offre", "refus", "ferme"].includes(c.statut)) {
+    const r = relance(c);
+    const quoi = c.statut === "entrevue" ? `J'ai une entrevue${c.entrevueLe ? ` le ${dateCourte(c.entrevueLe)}${c.entrevueLe.length > 10 ? " à " + c.entrevueLe.slice(11, 16) : ""}` : ""}.` : c.statut === "offre" ? "J'ai reçu une offre." : ["refus", "ferme"].includes(c.statut) ? "Cette candidature est terminée." : c.reponseLe ? `${E(nomCourt(c))} m'a répondu le ${dateCourte(c.reponseLe)}.` : r ? `Si personne ne répond, je relance le ${dateCourte(r.due)}.` : "";
+    return `<div class="guide fait"><b>${c.envoyeLe ? `J'ai postulé le ${dateCourte(c.envoyeLe)}.` : "Candidature envoyée."}</b> ${quoi}
+      ${["envoye", "relance"].includes(c.statut) ? `<div class="actions">${c.courriel ? `<button type="button" class="btn petit${r && r.enRetard ? " laiton" : ""}" data-m="relancer">Relancer maintenant</button>` : ""}${!c.reponseLe ? `<button type="button" class="btn petit" data-m="reponse">J'ai eu une réponse</button>` : ""}<button type="button" class="btn petit" data-m="entrevue">J'ai une entrevue</button></div>` : ""}</div>`;
+  }
+  if (c.statut === "brouillon" && c.courriel) return `<div class="guide g-courriel"><span class="mode">Je postule par courriel</span>
+    <p><b>Mon courriel est déjà prêt</b>, adressé à ${E(c.courriel)}, avec mon CV ${cv.nom} joint.</p>
+    <ol class="pas"><li><span>J'ouvre mon courriel et je le relis.</span><button type="button" class="btn laiton" data-m="brouillon-voir">Ouvrir mon courriel</button></li>
+    <li><span>Je clique « Envoyer ce brouillon ». C'est noté tout seul.</span></li></ol></div>`;
+  if (c.courriel) return `<div class="guide g-courriel"><span class="mode">Je postule par courriel</span>
+    <p>À <b>${E(c.courriel)}</b>, depuis info@sylvainbrochu.ca.</p>
+    <ol class="pas"><li><span>Je relis ma lettre, plus bas.</span></li>
+    <li><span>Mon courriel se prépare avec ma lettre et mon CV ${cv.nom} joint. Je vérifie, puis j'envoie.</span><button type="button" class="btn laiton" data-m="courriel">Préparer mon courriel</button></li></ol>
+    <p class="aide">Déjà envoyé d'une autre façon ? <button type="button" class="btn lien" data-m="envoyee">J'ai postulé</button></p></div>`;
+  if (c.formulaire || c.lien) return `<div class="guide g-site"><span class="mode">Je postule sur le site de l'employeur</span>
+    <ol class="pas">
+      <li><span>Je copie ma lettre.</span><button type="button" class="btn" data-m="copier">Copier ma lettre</button></li>
+      <li><span>Je télécharge mon CV ${cv.nom}.</span>${boutonCV}</li>
+      <li><span>J'ouvre le formulaire, je colle ma lettre (Cmd+V) et je joins mon CV.</span><button type="button" class="btn laiton" data-m="site">Ouvrir le formulaire</button></li>
+      <li><span>Quand c'est envoyé :</span><button type="button" class="btn plein" data-m="envoyee">J'ai postulé</button></li>
+    </ol></div>`;
+  return `<div class="guide g-inconnu"><span class="mode">Comment postuler ?</span><p>L'offre ne dit pas encore comment postuler. J'ouvre l'offre pour trouver le courriel ou le lien du formulaire, puis je l'ajoute dans « Détails de la candidature », plus bas.</p></div>`;
 }
+const blocOffre = (c, ouvert = false) => (c.description ? `<details class="texte-offre" ${ouvert ? "open" : ""}><summary>Le texte de l'offre${c.contrat ? ` (${E(c.contrat)})` : ""}${c.salaire ? ` | ${E(c.salaire)}` : ""}</summary><div class="corps-offre">${E(c.description)}</div></details>` : "");
 function ficheCandidature(c, nouvelle = false) {
   const v = (k) => E(c[k] || "");
   const aPostuler = ["a_preparer", "brouillon"].includes(c.statut);
   const lecture = !nouvelle && c.lien && !c.description && aPostuler && !detailsEssayes.has(c.id);
-  ouvrirModale(nouvelle ? "Nouvelle candidature" : E(c.entreprise), `
-    <div id="guide-post" data-cid="${E(c.id)}">${lecture ? `<div class="guide"><b>Lecture de l'offre...</b> La fiche se remplit toute seule (texte de l'offre, lettre, façon de postuler).</div>` : guidePostuler(c)}</div>
+  const cv = cvDe(c);
+  const lettreOuverte = nouvelle || c.statut === "a_preparer";
+  ouvrirModale(nouvelle ? "Ajouter une candidature" : `${E(nomCourt(c))}${c.poste ? `<small>${E(posteCourt(c.poste))}</small>` : ""}`, `
+    <div id="guide-post" data-cid="${E(c.id)}">${lecture ? `<div class="guide"><span class="mode"><span class="tourne"></span> Je lis l'offre...</span><p>La fiche se remplit toute seule : texte de l'offre, ma lettre et la façon de postuler.</p></div>` : nouvelle ? "" : guidePostuler(c)}</div>
+    ${lettreOuverte ? "" : `<details class="details-fiche"><summary>Ma lettre${c.statut === "brouillon" ? " (déjà dans mon courriel prêt)" : " (envoyée)"}</summary>`}
+    <section class="lettre">${lettreOuverte ? "<h3>Ma lettre</h3>" : ""}
+      <label class="champ"><span>Objet du courriel</span><input name="objet" value="${v("objet")}"></label>
+      <label class="champ"><span>Texte</span><textarea name="texte" rows="12">${v("texte")}</textarea></label>
+      <div class="actions">${c.lien && lettreOuverte ? `<button type="button" class="btn petit" data-m="refaire">Refaire ma lettre à partir de l'offre</button>` : ""}<a class="btn petit" href="/api/cv/?v=${cv.v}" target="_blank" rel="noopener">Voir mon CV ${cv.nom}</a></div>
+    </section>${lettreOuverte ? "" : "</details>"}
+    <div id="texte-offre">${blocOffre(c)}</div>
+    <details class="details-fiche" data-details="infos" ${nouvelle ? "open" : ""}><summary>Détails de la candidature</summary>
     <div class="grille-form">
       <label class="champ"><span>Entreprise</span><input name="entreprise" value="${v("entreprise")}" required></label>
       <label class="champ"><span>Poste</span><input name="poste" value="${v("poste")}"></label>
       <label class="champ"><span>Ville</span><input name="ville" value="${v("ville")}"></label>
+      <label class="champ"><span>Où j'en suis</span><select name="statut">${STATUTS.map(([k, n]) => `<option value="${k}" ${c.statut === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label class="champ large"><span>Courriel du recruteur (si je postule par courriel)</span><input name="courriel" type="email" value="${v("courriel")}"></label>
+      <label class="champ large"><span>Lien du formulaire (si je postule sur le site)</span><input name="formulaire" type="url" value="${v("formulaire")}"></label>
+      <label class="champ large"><span>Lien de l'offre</span><input name="lien" type="url" value="${v("lien")}"></label>
+      <label class="champ"><span>Nom du contact</span><input name="contact" value="${v("contact")}" placeholder="Pour le « Bonjour »"></label>
+      <label class="champ"><span>CV à joindre</span><select name="cv"><option value="carriere" ${c.cv !== "barman" ? "selected" : ""}>Mon CV carrière</option><option value="barman" ${c.cv === "barman" ? "selected" : ""}>Mon CV barman</option></select></label>
       <label class="champ"><span>Type</span><select name="type">${[["offre", "Offre publiée"], ["spontanee", "Candidature spontanée"], ["temporaire", "Emploi temporaire"]].map(([k, n]) => `<option value="${k}" ${c.type === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-      <label class="champ"><span>Statut</span><select name="statut">${STATUTS.map(([k, n]) => `<option value="${k}" ${c.statut === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-      <label class="champ"><span>CV à joindre</span><select name="cv"><option value="carriere" ${c.cv !== "barman" ? "selected" : ""}>CV carrière</option><option value="barman" ${c.cv === "barman" ? "selected" : ""}>CV barman</option></select></label>
-      <label class="champ"><span>Courriel du recruteur</span><input name="courriel" type="email" value="${v("courriel")}"></label>
-      <label class="champ"><span>Nom du contact</span><input name="contact" value="${v("contact")}" placeholder="Pour personnaliser le « Bonjour »"></label>
-      <label class="champ"><span>Priorité</span><select name="priorite">${[1, 2, 3].map((p) => `<option value="${p}" ${Number(c.priorite) === p ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+      <label class="champ"><span>Priorité</span><select name="priorite">${[[1, "Haute"], [2, "Normale"], [3, "Basse"]].map(([p, n]) => `<option value="${p}" ${Number(c.priorite || 2) === p ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <label class="champ"><span>Date limite</span><input name="echeance" type="date" value="${v("echeance")}"></label>
+      <label class="champ"><span>Salaire</span><input name="salaire" value="${v("salaire")}"></label>
       <label class="champ"><span>Envoyée le</span><input name="envoyeLe" type="date" value="${E((c.envoyeLe || "").slice(0, 10))}"></label>
       <label class="champ"><span>Réponse reçue le</span><input name="reponseLe" type="date" value="${E((c.reponseLe || "").slice(0, 10))}"></label>
       <label class="champ"><span>Entrevue</span><input name="entrevueLe" type="datetime-local" value="${E((c.entrevueLe || "").slice(0, 16))}"></label>
-      <label class="champ"><span>Salaire</span><input name="salaire" value="${v("salaire")}"></label>
-      <label class="champ large"><span>Lien de l'offre</span><input name="lien" type="url" value="${v("lien")}"></label>
-      <label class="champ large"><span>Formulaire en ligne (si pas de courriel)</span><input name="formulaire" type="url" value="${v("formulaire")}"></label>
-      <label class="champ large"><span>Objet du courriel</span><input name="objet" value="${v("objet")}"></label>
-      <label class="champ large"><span>Texte de candidature (lettre)</span><textarea name="texte" rows="12">${v("texte")}</textarea></label>
-      <div class="large actions"><button type="button" class="btn petit" data-m="copier">Copier la lettre</button>${c.lien ? `<button type="button" class="btn petit" data-m="refaire">Refaire la lettre à partir de l'offre</button>` : ""}<a class="btn petit" href="/api/cv/?v=${c.cv === "barman" ? "barman" : "carriere"}" target="_blank" rel="noopener">CV ${c.cv === "barman" ? "barman" : "carrière"} (PDF)</a></div>
-      <label class="champ large"><span>Notes</span><textarea name="note" rows="3">${v("note")}</textarea></label>
-    </div>
-    <div id="texte-offre">${c.description ? `<details class="texte-offre" open><summary>Texte complet de l'offre${c.contrat ? ` (${E(c.contrat)})` : ""}</summary><div class="corps-offre">${E(c.description)}</div></details>` : ""}</div>
-    ${c.historique?.length ? `<div><span class="etiquette">Historique</span><ul class="historique">${c.historique.slice(0, 12).map((h) => `<li><time>${dateCourte(h.date)}</time><span>${E(h.texte)}</span></li>`).join("")}</ul></div>` : ""}`,
-  `<div class="actions">${!nouvelle ? `<button class="btn danger" data-m="supprimer">Supprimer</button>` : ""}${c.lien ? `<a class="btn" href="${E(c.lien)}" target="_blank" rel="noopener">Voir l'offre</a>` : ""}</div>
-   <div class="actions">${!nouvelle && aPostuler ? `<button class="btn laiton" data-m="courriel" ${c.courriel ? "" : "hidden"}>Préparer le courriel</button><button class="btn laiton" data-m="site" ${!c.courriel && (c.formulaire || c.lien) ? "" : "hidden"}>Postuler sur le site</button><button class="btn" data-m="envoyee">Marquer envoyée</button>` : ""}<button class="btn plein" data-m="enregistrer">Enregistrer</button></div>`,
+      <label class="champ large"><span>Mes notes</span><textarea name="note" rows="3">${v("note")}</textarea></label>
+    </div></details>
+    ${c.historique?.length ? `<details class="details-fiche"><summary>Historique</summary><ul class="historique">${c.historique.slice(0, 12).map((h) => `<li><time>${dateCourte(h.date)}</time><span>${E(h.texte)}</span></li>`).join("")}</ul></details>` : ""}`,
+  `<div class="actions">${!nouvelle ? `<button type="button" class="btn lien danger" data-m="supprimer">Supprimer</button>` : ""}${c.lien ? `<a class="btn" href="${E(c.lien)}" target="_blank" rel="noopener">Voir l'offre</a>` : ""}</div>
+   <div class="actions"><button type="button" class="btn plein" data-m="enregistrer">${nouvelle ? "Ajouter" : "Enregistrer et fermer"}</button></div>`,
   (racine) => {
     const lire = () => { $$("[name]", racine).forEach((el) => { c[el.name] = el.name === "priorite" ? Number(el.value) : el.value.trim(); }); };
     let modifie = false;
-    racine.addEventListener("input", () => { modifie = true; });
-    const majBoutons = () => {
-      const co = $('[data-m="courriel"]', racine), si = $('[data-m="site"]', racine);
-      const mail = $('[name="courriel"]', racine).value.trim(), form = $('[name="formulaire"]', racine).value.trim() || $('[name="lien"]', racine).value.trim();
-      if (co) co.hidden = !mail; if (si) si.hidden = !!mail || !form;
-    };
-    $('[name="courriel"]', racine).addEventListener("input", majBoutons);
-    $('[name="formulaire"]', racine).addEventListener("input", majBoutons);
-    $('[data-m="copier"]', racine).onclick = async () => { const t = $('[name="texte"]', racine).value; toast(t ? ((await copier(avecSignature(t))) ? "Lettre copiée." : "Copie impossible, sélectionne le texte à la main.") : "La lettre est vide.", !t); };
-    const refaire = $('[data-m="refaire"]', racine);
-    if (refaire) refaire.onclick = async () => {
-      lire(); refaire.disabled = true; refaire.textContent = "Lecture de l'offre...";
-      try { if (!c.description) await remplirDepuisOffre(c); const l = lettrePour(c); $('[name="texte"]', racine).value = l.texte; $('[name="objet"]', racine).value = l.objet; toast("Lettre refaite à partir de l'offre. Relis-la avant d'envoyer."); }
-      catch (err) { toast(err.message, true); }
-      refaire.disabled = false; refaire.textContent = "Refaire la lettre à partir de l'offre";
-    };
-    const si = $('[data-m="site"]', racine);
-    if (si) si.onclick = async () => { lire(); sauver("candidatures"); await postulerSite(c); };
-    const env = $('[data-m="envoyee"]', racine);
-    if (env) env.onclick = () => {
-      if (env.dataset.ok !== "1") { env.dataset.ok = "1"; env.textContent = "Confirmer : c'est envoyé"; return; }
-      lire(); marquerEnvoyee(c); fermerModale(); rendrePage();
-    };
+    racine.addEventListener("input", (e) => {
+      modifie = true;
+      if (["courriel", "formulaire", "lien"].includes(e.target.name)) { const copie = { ...c }; $$("[name]", racine).forEach((el) => { copie[el.name] = el.value.trim(); }); $("#guide-post").innerHTML = copie.courriel || copie.formulaire || copie.lien ? guidePostuler(copie) : ""; }
+    });
+    const majFiche = () => { $("#guide-post").innerHTML = guidePostuler(c); };
+    racine.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-m]"); if (!b) return;
+      const m = b.dataset.m;
+      if (m === "copier") { const t = $('[name="texte"]', racine).value; return toast(t ? ((await copier(avecSignature(t))) ? "Ma lettre est copiée. Je la colle dans le formulaire (Cmd+V)." : "Copie impossible : je sélectionne le texte à la main.") : "Ma lettre est vide.", !t); }
+      if (m === "refaire") {
+        lire(); b.disabled = true; b.textContent = "Je lis l'offre...";
+        try { if (!c.description) await remplirDepuisOffre(c); const l = lettrePour(c); $('[name="texte"]', racine).value = l.texte; $('[name="objet"]', racine).value = l.objet; toast("Ma lettre est refaite à partir de l'offre. Je la relis avant d'envoyer."); }
+        catch (err) { toast(err.message, true); }
+        b.disabled = false; b.textContent = "Refaire ma lettre à partir de l'offre"; return;
+      }
+      if (m === "site") { lire(); sauver("candidatures"); return postulerSite(c); }
+      if (m === "envoyee") {
+        if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = "Oui, c'est envoyé"; return; }
+        lire(); marquerEnvoyee(c); fermerModale(); return rendrePage();
+      }
+      if (m === "courriel") {
+        lire(); sauver("candidatures");
+        if (etat.mail && !etat.mail.pret) return ouvrirMessagerie(c);
+        fermerModale(); return preparerCandidature(c);
+      }
+      if (m === "brouillon-voir") { lire(); sauver("candidatures"); fermerModale(); return voirBrouillon(c); }
+      if (m === "relancer") { fermerModale(); return preparerRelance(c); }
+      if (m === "reponse") { c.reponseLe = jour(); c.reponseTraitee = true; noter(c, "Réponse reçue"); sauver("candidatures"); toast("C'est noté : j'ai eu une réponse."); return majFiche(); }
+      if (m === "entrevue") {
+        const d = $('[data-details="infos"]', racine); d.open = true;
+        $('[name="statut"]', racine).value = "entrevue"; const ch = $('[name="entrevueLe"]', racine); ch.focus(); ch.scrollIntoView({ block: "center" });
+        return toast("J'indique la date de l'entrevue, puis « Enregistrer et fermer ».");
+      }
+      if (m === "enregistrer") {
+        const ancien = (etat.d.candidatures.find((x) => x.id === c.id) || {}).statut;
+        lire(); if (!c.entreprise) { $('[data-details="infos"]', racine).open = true; return toast("J'indique au moins le nom de l'entreprise.", true); }
+        if (nouvelle) { c.id = c.id || uid(); noter(c, "Fiche créée"); etat.d.candidatures.unshift(c); }
+        else if (ancien && ancien !== c.statut) noter(c, `Statut : ${NOM_STATUT[ancien]} vers ${NOM_STATUT[c.statut]}`);
+        if (c.statut === "envoye" && !c.envoyeLe) c.envoyeLe = jour();
+        sauver("candidatures"); fermerModale(); rendrePage(); return toast(nouvelle ? "Candidature ajoutée." : "C'est enregistré.");
+      }
+      if (m === "supprimer") {
+        if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = "Oui, supprimer"; b.classList.add("plein-danger"); return; }
+        etat.d.candidatures = etat.d.candidatures.filter((x) => x.id !== c.id); sauver("candidatures"); fermerModale(); rendrePage(); return toast("Candidature supprimée.");
+      }
+    });
     if (lecture) {
       detailsEssayes.add(c.id);
       const copie = { ...c };
@@ -444,33 +579,38 @@ function ficheCandidature(c, nouvelle = false) {
         if ($("#guide-post")?.dataset.cid !== c.id) return; // fiche fermée entre-temps
         if (!modifie) return ficheCandidature(c);
         $$("[name]", racine).forEach((el) => { if (!el.value && copie[el.name]) el.value = copie[el.name]; });
-        $("#guide-post").innerHTML = guidePostuler(c);
-        $("#texte-offre").innerHTML = c.description ? `<details class="texte-offre" open><summary>Texte complet de l'offre</summary><div class="corps-offre">${E(c.description)}</div></details>` : "";
-        majBoutons();
+        majFiche();
+        $("#texte-offre").innerHTML = blocOffre(c);
       }).catch((err) => {
         const l = lettrePour(c); let n = 0;
         if (!c.texte) { c.texte = l.texte; n++; } if (!c.objet) { c.objet = l.objet; n++; }
         if (!c.courriel && !c.formulaire) { c.formulaire = c.lien; n++; }
         if (n) sauver("candidatures");
-        $$("[name]", racine).forEach((el) => { if (!el.value && c[el.name] && $("#guide-post")?.dataset.cid === c.id) el.value = c[el.name]; });
-        const g = $("#guide-post"); if (g && g.dataset.cid === c.id) g.innerHTML = `<div class="guide"><b>L'offre n'a pas pu être lue</b> (${E(err.message)}). Ouvre-la avec « Voir l'offre ».</div>` + guidePostuler(c); });
+        if ($("#guide-post")?.dataset.cid !== c.id) return;
+        $$("[name]", racine).forEach((el) => { if (!el.value && c[el.name]) el.value = c[el.name]; });
+        $("#guide-post").innerHTML = `<p class="aide">L'offre n'a pas pu être lue automatiquement (${E(err.message)}). Les étapes restent les mêmes :</p>` + guidePostuler(c);
+      });
     }
-    $('[data-m="enregistrer"]', racine).onclick = () => {
-      const ancien = (etat.d.candidatures.find((x) => x.id === c.id) || {}).statut;
-      lire(); if (!c.entreprise) return toast("Indique au moins l'entreprise.", true);
-      if (nouvelle) { c.id = c.id || uid(); noter(c, "Fiche créée"); etat.d.candidatures.unshift(c); }
-      else if (ancien && ancien !== c.statut) noter(c, `Statut : ${NOM_STATUT[ancien]} vers ${NOM_STATUT[c.statut]}`);
-      if (c.statut === "envoye" && !c.envoyeLe) c.envoyeLe = jour();
-      sauver("candidatures"); fermerModale(); rendrePage(); toast("Candidature enregistrée.");
-    };
-    const sup = $('[data-m="supprimer"]', racine);
-    if (sup) sup.onclick = () => {
-      if (sup.dataset.ok !== "1") { sup.dataset.ok = "1"; sup.textContent = "Confirmer la suppression"; return; }
-      etat.d.candidatures = etat.d.candidatures.filter((x) => x.id !== c.id); sauver("candidatures"); fermerModale(); rendrePage(); toast("Candidature supprimée.");
-    };
-    const co = $('[data-m="courriel"]', racine);
-    if (co) co.onclick = () => { lire(); sauver("candidatures"); fermerModale(); preparerCandidature(c); };
   });
+}
+// Boîte info@ pas branchée : ma propre messagerie s'ouvre avec le courriel déjà écrit.
+function ouvrirMessagerie(c) {
+  const texte = avecSignature(c.texte || lettrePour(c).texte);
+  location.href = `mailto:${encodeURIComponent(c.courriel)}?subject=${encodeURIComponent(c.objet || lettrePour(c).objet)}&body=${encodeURIComponent(texte)}`;
+  toast("Ma messagerie s'ouvre avec le courriel écrit. J'y joins mon CV (« Télécharger mon CV »), j'envoie, puis je clique « J'ai postulé ».");
+}
+// Ouvre le brouillon de cette candidature dans Mes courriels.
+async function voirBrouillon(c) {
+  if (etat.mail && !etat.mail.pret) { toast("Ma boîte info@ n'est pas encore branchée : je prépare le courriel depuis la fiche.", true); return ficheCandidature(c); }
+  toast("J'ouvre mon courriel...");
+  try {
+    const l = await chargerBoite("brouillons", true);
+    const a = String(c.courriel || "").toLowerCase();
+    const m = l.find((x) => (x.a || []).some((y) => String(y.courriel || "").toLowerCase() === a));
+    etat.boite.dossier = "brouillons"; etat.boite.q = ""; etat.boite.ouvert = m ? { dossier: "brouillons", uid: m.uid } : null;
+    if (etat.page === "courriels") pCourriels(); else location.hash = "#courriels";
+    if (!m) toast("Je ne retrouve pas ce brouillon : je le prépare à nouveau depuis la fiche (« Préparer mon courriel »).", true);
+  } catch (err) { toast(err.message, true); }
 }
 
 const remplir = (t, c = {}) => String(t || "")
@@ -532,7 +672,7 @@ function lettrePour(c) {
   const defaut = temp ? "J'ai supervisé des équipes de service lors d'événements jusqu'à 1 500 invités." : "J'ai dirigé pendant dix ans Even Even Design et son réseau de sous-traitants, puis géré les opérations du centre Never Apart, avec plus de 35 expositions livrées.";
   const points = choix.length ? choix : [defaut];
   const fin = temp ? "Je suis disponible rapidement. Mon CV est joint." : "Mon CV est joint, et mes projets sont présentés sur www.sylvainbrochu.ca. J'aimerais beaucoup en discuter avec vous.";
-  const texte = `Bonjour${c.contact ? " " + c.contact : ""},\n\nJe vous propose ma candidature au poste de ${poste}${chez}.\n\n${intro} ${points.slice(0, 2).join(" ")}${points[2] ? "\n\n" + points[2] : ""}\n\n${fin}\n\nCordialement,\n\n${etat.d.reglages.signature || ""}`;
+  const texte = `Bonjour${c.contact ? " " + c.contact : ""},\n\nJe vous propose ma candidature au poste de ${poste}${chez}${chez.endsWith(".") ? "" : "."}\n\n${intro} ${points.slice(0, 2).join(" ")}${points[2] ? "\n\n" + points[2] : ""}\n\n${fin}\n\nCordialement,\n\n${etat.d.reglages.signature || ""}`;
   return { objet: `Candidature, ${poste} - Sylvain Brochu`, texte };
 }
 // Lit l'offre (texte complet, courriel, date limite, lien pour postuler) et complète la fiche sans écraser ce qui est déjà rempli.
@@ -553,7 +693,6 @@ async function remplirDepuisOffre(c, forcerLettre = false) {
   c.methode = c.courriel ? "courriel" : "site";
   if (forcerLettre || vide("texte")) { const l = lettrePour(c); c.texte = l.texte; if (forcerLettre || vide("objet")) c.objet = l.objet; }
   if (vide("objet")) c.objet = lettrePour(c).objet;
-  if (vide("note")) c.note = c.courriel ? `Postuler par courriel à ${c.courriel}.` : "Postuler sur le site de l'employeur (bouton « Postuler sur le site »).";
   return c;
 }
 const avecSignature = (t) => { const sig = etat.d.reglages.signature || ""; return sig && t && !t.includes(sig.split("\n")[0] + "\n") ? `${t.trimEnd()}\n\n${sig}` : t; };
@@ -564,12 +703,12 @@ async function postulerSite(c) {
   const ok = c.texte ? await copier(avecSignature(c.texte)) : false;
   window.open(lien, "_blank", "noopener");
   if (!c.ouvertLe) { c.ouvertLe = jour(); noter(c, "Site de l'employeur ouvert pour postuler"); sauver("candidatures"); }
-  toast(ok ? "Lettre copiée. Colle-la dans le formulaire (Cmd+V), joins le CV, puis clique « Envoyée » ici." : "Site ouvert. Joins le CV et la lettre, puis clique « Envoyée » ici.");
+  toast(ok ? "Ma lettre est copiée. Dans le formulaire : je la colle (Cmd+V), je joins mon CV, j'envoie, puis je reviens cliquer « J'ai postulé »." : "Le formulaire s'ouvre. J'y mets ma lettre et mon CV, j'envoie, puis je reviens cliquer « J'ai postulé ».");
 }
 function marquerEnvoyee(c) {
   if (!c.envoyeLe) c.envoyeLe = jour();
   noter(c, c.courriel ? "Marquée envoyée" : "Envoyée sur le site de l'employeur");
-  c.statut = "envoye"; sauver("candidatures"); toast(`Candidature ${c.entreprise} marquée envoyée. Relance proposée dans ${R()} jours.`);
+  c.statut = "envoye"; sauver("candidatures"); toast(`C'est noté : j'ai postulé chez ${nomCourt(c)}. Sans réponse dans ${R()} jours, je verrai « Relancer ».`);
 }
 
 function preparerCandidature(c) {
@@ -587,8 +726,8 @@ function preparerRelance(c) {
 
 async function synchroniser() {
   const cands = (etat.d.candidatures || []).filter((c) => c.courriel);
-  if (!cands.length) return toast("Aucune candidature avec une adresse courriel.");
-  toast("Synchronisation avec Gmail...");
+  if (!cands.length) return toast("Aucune de mes candidatures n'a d'adresse courriel.");
+  toast("Je vérifie mes envois et réponses dans Gmail...");
   try {
     const { resultats } = await api("/api/courriels/?action=synchroniser", { method: "POST", body: { adresses: cands.map((c) => c.courriel) } });
     let n = 0;
@@ -619,7 +758,7 @@ function ouvrirComposeur(o = {}) {
   const mods = etat.d.modeles || [];
   const c = o.candidatureId ? etat.d.candidatures.find((x) => x.id === o.candidatureId) : null;
   ouvrirModale(o.enReponseA && !o.relance ? "Répondre" : o.relance ? "Relance" : "Nouveau courriel", `
-    <p class="aide">Expéditeur : <b>${E(reg.expediteurNom)} &lt;${E(reg.expediteur)}&gt;</b>${c ? ` | Candidature : <b>${E(c.entreprise)}</b>` : ""}</p>
+    <p class="aide">Envoyé depuis <b>${E(reg.expediteurNom)} &lt;${E(reg.expediteur)}&gt;</b>${c ? ` | Candidature : <b>${E(nomCourt(c))}</b>` : ""}</p>
     <div class="grille-form">
       <label class="champ large"><span>À</span><input name="a" value="${E(o.a || "")}" placeholder="adresse@entreprise.com"></label>
       <label class="champ"><span>Cc</span><input name="cc" value="${E(o.cc || "")}"></label>
@@ -630,8 +769,8 @@ function ouvrirComposeur(o = {}) {
       <label class="champ large"><span>Message</span><textarea name="texte" rows="14">${E(o.texte || "")}</textarea></label>
       <label class="champ large"><span>Autres pièces jointes</span><input type="file" name="fichiers" multiple></label>
     </div>`,
-  `<span class="aide">Le brouillon apparaît aussi dans Gmail, dans Brouillons.</span>
-   <div class="actions"><button class="btn" data-m="envoyer">Envoyer maintenant</button><button class="btn plein" data-m="brouillon">Enregistrer dans les brouillons</button></div>`,
+  `<span class="aide">Pas prêt ? « Garder en brouillon » : je le retrouve dans Mes courriels, Brouillons.</span>
+   <div class="actions"><button class="btn" data-m="brouillon">Garder en brouillon</button><button class="btn laiton" data-m="envoyer">${c && !o.relance ? "Envoyer ma candidature" : o.relance ? "Envoyer ma relance" : "Envoyer"}</button></div>`,
   (racine) => {
     $('[name="modele"]', racine).onchange = (e) => {
       const m = mods.find((x) => x.id === e.target.value); if (!m) return;
@@ -663,16 +802,16 @@ function ouvrirComposeur(o = {}) {
     };
     $('[data-m="brouillon"]', racine).onclick = async (e) => {
       const b = e.currentTarget; b.disabled = true; b.textContent = "Enregistrement...";
-      try { await api("/api/courriels/?action=brouillon", { method: "POST", body: await message() }); apres(false); fermerModale(); toast("Brouillon enregistré dans Gmail."); delete etat.boite.listes.brouillons; rendrePage(); }
-      catch (err) { b.disabled = false; b.textContent = "Enregistrer dans les brouillons"; toast(err.code === "COURRIEL_ABSENT" ? "Connexion Gmail pas encore configurée (voir Réglages)." : err.message, true); }
+      try { await api("/api/courriels/?action=brouillon", { method: "POST", body: await message() }); apres(false); fermerModale(); toast("Mon courriel est gardé dans mes brouillons."); delete etat.boite.listes.brouillons; rendrePage(); }
+      catch (err) { b.disabled = false; b.textContent = "Garder en brouillon"; toast(err.code === "COURRIEL_ABSENT" ? "Connexion Gmail pas encore configurée (voir Réglages)." : err.message, true); }
     };
     $('[data-m="envoyer"]', racine).onclick = async (e) => {
       const b = e.currentTarget; const m = await message().catch((err) => { toast(err.message, true); return null; }); if (!m) return;
-      if (!m.a.trim()) return toast("Indique un destinataire.", true);
-      if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.classList.add("laiton"); b.textContent = `Confirmer l'envoi à ${m.a.split(/[,;]/)[0].trim()}`; return; }
+      if (!m.a.trim()) return toast("J'indique à qui envoyer (champ « À »).", true);
+      if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.classList.add("laiton"); b.textContent = `Oui, envoyer à ${m.a.split(/[,;]/)[0].trim()}`; return; }
       b.disabled = true; b.textContent = "Envoi...";
-      try { await api("/api/courriels/?action=envoyer", { method: "POST", body: m }); apres(true); fermerModale(); toast("Courriel envoyé."); delete etat.boite.listes.envoyes; rendrePage(); }
-      catch (err) { b.disabled = false; b.textContent = "Envoyer maintenant"; delete b.dataset.ok; toast(err.message, true); }
+      try { await api("/api/courriels/?action=envoyer", { method: "POST", body: m }); apres(true); fermerModale(); toast(c ? `Ma candidature est envoyée à ${nomCourt(c)}.` : "Mon courriel est envoyé."); delete etat.boite.listes.envoyes; rendrePage(); }
+      catch (err) { b.disabled = false; b.textContent = "Réessayer l'envoi"; delete b.dataset.ok; toast(err.message, true); }
     };
   });
 }
@@ -681,8 +820,8 @@ function ouvrirComposeur(o = {}) {
 // COURRIELS
 // ======================================================================
 function blocConfigCourriel(court = false) {
-  return `<div class="config"><h3>Boîte info@ pas encore branchée</h3>
-  ${court ? `<p class="aide">Mika doit ajouter le mot de passe d'application Gmail dans Vercel. Détails dans Réglages.</p>` : `<ol>
+  return `<div class="config"><h3>Ma boîte info@ n'est pas encore branchée</h3>
+  ${court ? `<p class="aide">Mika s'en occupe. En attendant, « Préparer mon courriel » ouvre ma propre messagerie.</p>` : `<p class="aide">Mika s'en occupe. En attendant, « Préparer mon courriel » ouvre ma propre messagerie avec le courriel déjà écrit. Pour Mika :</p><ol>
     <li>Dans le compte Google <b>${E(etat.mail?.boite || "massivemedias@gmail.com")}</b>, ouvrir <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Mots de passe des applications</a> et en créer un nommé « Admin Sylvain ».</li>
     <li>Dans Vercel, projet <b>sylvainbrochu.ca</b> : Settings, Environment Variables, ajouter <code>MAIL_APP_PASSWORD</code> avec ce mot de passe (Production).</li>
     <li>Redéployer le projet. La boîte s'affiche ici.</li></ol>
@@ -690,8 +829,8 @@ function blocConfigCourriel(court = false) {
 }
 function pCourriels() {
   const b = etat.boite;
-  if (etat.mail && !etat.mail.pret) { $("#page").innerHTML = entete("Courriels", "Boîte de info@sylvainbrochu.ca.") + blocConfigCourriel(); return; }
-  $("#page").innerHTML = entete("Courriels", "Les courriels envoyés à info@sylvainbrochu.ca, les envois et les brouillons. Les réponses partent de info@.",
+  if (etat.mail && !etat.mail.pret) { $("#page").innerHTML = entete("Mes courriels", "Ma boîte info@sylvainbrochu.ca.") + blocConfigCourriel(); return; }
+  $("#page").innerHTML = entete("Mes courriels", "Ce que je reçois sur info@sylvainbrochu.ca, ce que j'ai envoyé et mes courriels prêts à partir (brouillons).",
     `${b.dossier === "brouillons" ? `<button class="btn" data-act="recreer-brouillons" title="Crée dans Gmail les brouillons des candidatures « Brouillon prêt » qui n'en ont pas">Recréer les brouillons manquants</button>` : ""}<button class="btn" data-act="rafraichir-boite">Actualiser</button><button class="btn laiton" data-act="nouveau-courriel">Nouveau courriel</button>`) + `
   <div class="boite">
     <div class="colonne"><div class="tetecol">
@@ -769,50 +908,52 @@ const SITES = [
   ["Hôtellerie Jobs", (q) => `https://www.hotelleriejobs.com/fr/jobs?search=${encodeURIComponent(q)}`],
 ];
 function pOffres() {
-  const masq = new Set(etat.d["offres-masquees"] || []);
-  $("#page").innerHTML = entete("Offres d'emploi", "Offres trouvées automatiquement sur Grenier aux emplois, Cultive, CQT, Eluta, Talent.com, Jobillico, Guichet-Emplois, Hôtellerie Jobs, Cirque du Soleil, Solotech et GSM, plus les alertes Indeed, LinkedIn, Glassdoor et Jobboom reçues sur info@ (grand Montréal, sans restauration rapide).",
-    `<button class="btn" data-act="ajouter-offre">Ajouter une offre</button><button class="btn" data-act="rafraichir-offres">Actualiser</button>`) + `
-  <div class="filtres">${[["tous", "Toutes"], ["carriere", "Carrière"], ["temporaire", "Temporaire (bar, service)"], ["sauvees", "Mes offres ajoutées"]].map(([k, n]) => `<button type="button" data-profil="${k}" aria-pressed="${k === etat.profilOffres}">${n}</button>`).join("")}</div>
-  <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
-  <section class="carte carte-offres"><header><h2>Carte des offres</h2><span class="aide" id="geo-etat"></span></header>
+  $("#page").innerHTML = entete("Offres pour moi", "Des offres en production, en événementiel et en bar ou service, cherchées pour moi chaque jour sur une quinzaine de sites d'emploi du grand Montréal. Sur celle qui m'intéresse, je clique « Je postule ».",
+    `<button class="btn" data-act="ajouter-offre">J'ajoute une offre trouvée ailleurs</button><button class="btn" data-act="rafraichir-offres">Chercher maintenant</button>`) + `
+  <div class="filtres" id="filtres-off"></div>
+  <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot (production, bar...)" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
+  <div class="offres" id="liste-off"><p class="vide"><span class="tourne"></span> Je cherche les offres...</p></div>
+  <details class="carte plus-loin" id="det-carte"><summary><h2>Voir les offres sur la carte</h2><span class="aide" id="geo-etat"></span></summary>
     <div id="carte-off" class="carte-geo" role="region" aria-label="Carte des offres d'emploi"></div>
-    <p class="aide legende"><span class="pt pt-c"></span> Carrière <span class="pt pt-t"></span> Temporaire <span class="pt pt-v"></span> Pâle : position de la ville (adresse pas encore trouvée)</p></section>
-  <div class="offres" id="liste-off"><p class="vide">Recherche des offres...</p></div>
-  <div class="grille g2" style="margin-top:22px">
-    <section class="carte"><header><h2>Recherches rapides</h2></header>
-      <div class="liens-rapides">${["carriere", "temporaire"].map((p) => `<div class="groupe"><h4>${p === "carriere" ? "Carrière" : "Temporaire"}</h4>${RECHERCHES[p].map((q) => `<div style="margin-bottom:6px"><b style="font-size:.84rem">${E(q)}</b><br>${SITES.filter(([n]) => p === "temporaire" || n !== "Hôtellerie Jobs").map(([n, f]) => `<a href="${E(f(q))}" target="_blank" rel="noopener" style="display:inline;margin-right:8px">${n}</a>`).join("")}</div>`).join("")}</div>`).join("")}</div>
-      <p class="aide" style="margin-top:10px">Indeed et LinkedIn n'offrent pas d'accès automatique à leurs offres : ces liens ouvrent les recherches triées par date.</p>
-    </section>
-    <section class="carte"><header><h2>Ses profils sur les plateformes</h2></header>
-      <p class="aide">Créer un compte et téléverser le CV demande que Sylvain se connecte lui-même. Coche quand c'est fait.</p>
-      <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${p.profil === "barman" ? "barman" : "carrière"}</small></div>
-        <div class="actions"><label class="aide"><input type="checkbox" data-plat="${i}" data-k="profilCree" ${p.profilCree ? "checked" : ""}> Profil créé</label>
-        <select class="choix" data-plat="${i}" data-k="cvTeleverse"><option value="">CV non téléversé</option><option value="carriere" ${p.cvTeleverse === "carriere" ? "selected" : ""}>CV carrière en ligne</option><option value="barman" ${p.cvTeleverse === "barman" ? "selected" : ""}>CV barman en ligne</option></select></div></li>`).join("")}</ul>
-    </section>
-  </div>`;
+    <p class="aide legende"><span class="pt pt-c"></span> Carrière <span class="pt pt-t"></span> Bar et service <span class="pt pt-v"></span> Pâle : position de la ville (adresse pas encore trouvée)</p></details>
+  <details class="carte plus-loin"><summary><h2>Chercher moi-même sur d'autres sites</h2><span class="aide">Indeed, LinkedIn, Guichet-Emplois</span></summary>
+    <div class="liens-rapides">${["carriere", "temporaire"].map((p) => `<div class="groupe"><h4>${p === "carriere" ? "Carrière" : "Bar et service"}</h4>${RECHERCHES[p].map((q) => `<div style="margin-bottom:6px"><b style="font-size:.84rem">${E(q)}</b><br>${SITES.filter(([n]) => p === "temporaire" || n !== "Hôtellerie Jobs").map(([n, f]) => `<a href="${E(f(q))}" target="_blank" rel="noopener" style="display:inline;margin-right:8px">${n}</a>`).join("")}</div>`).join("")}</div>`).join("")}</div>
+    <p class="aide" style="margin-top:10px">Indeed et LinkedIn ne laissent pas lire leurs offres automatiquement : ces liens ouvrent leurs recherches, les plus récentes d'abord. Si je trouve une offre, « J'ajoute une offre trouvée ailleurs ».</p></details>
+  <details class="carte plus-loin"><summary><h2>Mes profils sur les sites d'emploi</h2><span class="aide">${(etat.d.plateformes || []).filter((p) => p.profilCree).length}/${(etat.d.plateformes || []).length} faits</span></summary>
+    <p class="aide">Je crée mon compte sur chaque site et j'y mets mon CV, puis je coche ici.</p>
+    <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${p.profil === "barman" ? "barman" : "carrière"}</small></div>
+      <div class="actions"><label class="aide"><input type="checkbox" data-plat="${i}" data-k="profilCree" ${p.profilCree ? "checked" : ""}> Mon compte est créé</label>
+      <select class="choix" data-plat="${i}" data-k="cvTeleverse"><option value="">CV pas encore mis</option><option value="carriere" ${p.cvTeleverse === "carriere" ? "selected" : ""}>Mon CV carrière y est</option><option value="barman" ${p.cvTeleverse === "barman" ? "selected" : ""}>Mon CV barman y est</option></select></div></li>`).join("")}</ul></details>`;
   $("#rech-off").oninput = (e) => { etat.rechOffres = e.target.value; listerOffres(); };
   $$("[data-plat]").forEach((el) => { el.onchange = () => { const p = etat.d.plateformes[el.dataset.plat]; p[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value; sauver("plateformes"); }; });
-  listerOffres(masq);
+  $("#det-carte").ontoggle = (e) => { if (e.target.open) { etat.carteCadree = false; majCarte(($("#liste-off") || {})._offres || []); if (etat.offres?.geoAttente > 0) localiserOffres(); } };
+  listerOffres();
 }
 async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), force = false) {
   const el = $("#liste-off"); if (!el) return;
   let o;
-  try { o = await chargerOffres(force); } catch (e) { el.innerHTML = `<p class="vide">${E(e.message)}</p>`; return; }
+  try { o = await chargerOffres(force); } catch (e) { el.innerHTML = `<p class="vide">Je n'arrive pas à charger les offres pour l'instant (${E(e.message)}). <button class="btn petit" data-act="rafraichir-offres">Réessayer</button></p>`; return; }
   if (etat.page !== "offres") return;
-  const ok = o.etat.filter((x) => x.ok).length;
-  $("#etat-off").textContent = `${ok}/${o.etat.length} sources lues, mise à jour ${ilYa(new Date(o.maj).getTime())}`;
+  afficherEtatOffres();
   const sauvees = (etat.d["offres-sauvees"] || []).map((x) => ({ ...x, sauvee: true }));
-  let l = etat.profilOffres === "sauvees" ? sauvees : [...sauvees, ...o.offres.filter((x) => !masq.has(x.id))];
-  if (["carriere", "temporaire"].includes(etat.profilOffres)) l = l.filter((x) => x.profil === etat.profilOffres);
+  const toutes = [...sauvees, ...o.offres.filter((x) => !masq.has(x.id))];
+  const FILTRES = [["tous", "Toutes", () => true], ["nouvelles", "Nouvelles", estNouvelle], ["carriere", "Carrière", (x) => x.profil === "carriere"], ["temporaire", "Bar et service", (x) => x.profil === "temporaire"], ["sauvees", "Ajoutées par moi", (x) => x.sauvee]];
+  const f = FILTRES.find((x) => x[0] === etat.profilOffres) || FILTRES[0];
+  $("#filtres-off").innerHTML = FILTRES.map(([k, n, fn]) => `<button type="button" data-profil="${k}" aria-pressed="${k === f[0]}">${n} <b>${toutes.filter(fn).length}</b></button>`).join("");
+  let l = toutes.filter(f[2]);
   const q = etat.rechOffres.toLowerCase();
   if (q) l = l.filter((x) => `${x.titre} ${x.entreprise} ${x.lieu} ${x.resume}`.toLowerCase().includes(q));
-  const dejaLiees = new Set((etat.d.candidatures || []).map((c) => c.lien).filter(Boolean));
-  etat.carteCadree = false; majCarte(l);
-  if (o.geoAttente > 0) localiserOffres();
-  el.innerHTML = l.length ? l.map((x) => `<article class="offre"><div><h3>${E(x.titre)}</h3><div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.salaire ? `<span>${E(x.salaire)}</span>` : ""}<span>${E(x.source || "Ajoutée")}</span>${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}<span class="pastille ${x.profil === "temporaire" ? "p-brouillon" : "p-envoye"}">${x.profil === "temporaire" ? "Temporaire" : "Carrière"}</span></div></div>
-    <div class="actions"><button class="btn petit" data-act="lire-offre" data-oid="${x.id}">Lire l'offre</button><a class="btn petit" href="${E(x.url)}" target="_blank" rel="noopener">Site</a>${dejaLiees.has(x.url) ? `<span class="pastille p-reponse">Dans les candidatures</span>` : `<button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Ajouter aux candidatures</button>`}${x.sauvee ? `<button class="btn petit danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}">Masquer</button>`}</div>
-    ${x.resume ? `<p>${E(x.resume)}</p>` : ""}<div class="detail-offre" id="det-${x.id}" hidden></div></article>`).join("") : `<p class="vide">Aucune offre dans ce filtre.</p>`;
+  l.sort((a, b) => (estNouvelle(b) ? 1 : 0) - (estNouvelle(a) ? 1 : 0) || String(b.date || "").localeCompare(String(a.date || "")));
+  const liees = new Map((etat.d.candidatures || []).filter((c) => c.lien).map((c) => [c.lien, c]));
+  if ($("#det-carte")?.open) { etat.carteCadree = false; majCarte(l); if (o.geoAttente > 0) localiserOffres(); }
+  el.innerHTML = l.length ? l.map((x) => { const c = liees.get(x.url); const neuve = estNouvelle(x); return `<article class="offre${neuve ? " neuve" : ""}"><div>
+      <h3>${neuve ? `<span class="pastille p-neuve">Nouvelle</span> ` : ""}<a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.titre)}</a></h3>
+      <div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.salaire ? `<span>${E(x.salaire)}</span>` : ""}${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}<span class="pastille ${x.profil === "temporaire" ? "p-brouillon" : "p-envoye"}">${x.profil === "temporaire" ? "Bar et service" : "Carrière"}</span></div></div>
+    <div class="actions">${c ? `<button class="btn petit" data-act="fiche" data-id="${c.id}">Dans mes candidatures</button>` : `<button class="btn laiton" data-act="offre-vers-cand" data-oid="${x.id}">Je postule</button>`}<button class="btn petit" data-act="lire-offre" data-oid="${x.id}">Lire l'offre</button>${x.sauvee ? `<button class="btn petit lien danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}" title="Je ne verrai plus cette offre">Pas pour moi</button>`}</div>
+    ${x.resume ? `<p>${E(x.resume)}</p>` : ""}<div class="detail-offre" id="det-${x.id}" hidden></div></article>`; }).join("")
+    : `<p class="vide">${f[0] === "nouvelles" ? "Pas de nouvelle offre depuis ma dernière visite." : f[0] === "sauvees" ? "Je n'ai pas encore ajouté d'offre moi-même." : "Aucune offre ici."}</p>`;
   el._offres = l;
+  noterVues(o.offres);
 }
 // ---------- Carte des offres (MapLibre + fond OpenFreeMap « Liberty », style proche de Google Maps) ----------
 let carteLibPret = null;
@@ -882,9 +1023,9 @@ function offreParId(id) { return (($("#liste-off") || {})._offres || []).find((x
 // ======================================================================
 function pCV() {
   const v = etat.cvOnglet; const cle = `cv-${v}`; const cv = etat.d[cle];
-  $("#page").innerHTML = entete("CV", v === "carriere" ? "Le CV carrière est celui du site : « Publier sur le site » remplace le PDF téléchargé par les visiteurs." : "Le CV barman sert aux emplois temporaires. Il n'est jamais affiché sur le site, seulement joint aux courriels.",
-    `<a class="btn" href="/api/cv/?v=${v}" target="_blank" rel="noopener">PDF actuel</a><button class="btn" data-act="cv-pdf">Télécharger le PDF</button><button class="btn plein" data-act="cv-publier">${v === "carriere" ? "Publier sur le site" : "Utiliser comme pièce jointe"}</button>`) + `
-  <div class="filtres">${[["carriere", "CV carrière (public)"], ["barman", "CV barman (privé)"]].map(([k, n]) => `<button type="button" data-cv="${k}" aria-pressed="${k === v}">${n}</button>`).join("")}</div>
+  $("#page").innerHTML = entete("Mon CV", v === "carriere" ? "Mon CV carrière est celui de mon site. « Publier sur mon site » remplace le PDF que les visiteurs téléchargent, et celui joint à mes courriels." : "Mon CV barman sert aux emplois en bar et service. Il n'est jamais affiché sur mon site, seulement joint à mes courriels.",
+    `<a class="btn" href="/api/cv/?v=${v}" target="_blank" rel="noopener">Voir mon CV actuel</a><button class="btn" data-act="cv-pdf">Télécharger ce PDF</button><button class="btn plein" data-act="cv-publier">${v === "carriere" ? "Publier sur mon site" : "L'utiliser dans mes courriels"}</button>`) + `
+  <div class="filtres">${[["carriere", "Mon CV carrière (sur mon site)"], ["barman", "Mon CV barman (privé)"]].map(([k, n]) => `<button type="button" data-cv="${k}" aria-pressed="${k === v}">${n}</button>`).join("")}</div>
   <div class="cv-grille">
     <div class="pile" id="ed-cv">
       <section class="carte"><h2>En-tête</h2><div class="grille-form">
@@ -958,7 +1099,7 @@ async function pdfCV(publier) {
     $("#pages-cv") && ($("#pages-cv").textContent = `Le PDF fait ${r.pages} page${r.pages > 1 ? "s" : ""}.`);
     if (!publier) { r.doc.download(v === "barman" ? "Sylvain-Brochu-CV-Bar.pdf" : "Sylvain-Brochu-CV.pdf"); return; }
     await api(`/api/cv/?v=${v}`, { method: "POST", body: { pdf: r.base64 } });
-    toast(v === "carriere" ? `CV publié sur le site (${r.pages} pages). Il est aussi joint aux nouveaux courriels.` : `CV barman enregistré (${r.pages} page${r.pages > 1 ? "s" : ""}). Il sera joint aux courriels « barman ».`);
+    toast(v === "carriere" ? `Mon CV est publié sur mon site (${r.pages} pages). Il est aussi joint à mes prochains courriels.` : `Mon CV barman est enregistré (${r.pages} page${r.pages > 1 ? "s" : ""}). Il sera joint à mes courriels pour le bar et le service.`);
   } catch (e) { toast("PDF impossible : " + e.message, true); }
 }
 
@@ -967,7 +1108,7 @@ async function pdfCV(publier) {
 // ======================================================================
 let minuteurLive = null;
 function pStats() {
-  $("#page").innerHTML = entete("Statistiques", "Visites de sylvainbrochu.ca, mesurées par le site lui-même (sans témoin). Les robots et l'admin ne sont pas comptés.",
+  $("#page").innerHTML = entete("Visites de mon site", "Qui visite sylvainbrochu.ca, d'où et quelles pages. Les robots et mes propres visites ici ne sont pas comptés.",
     `<div class="periode">${[7, 30, 90].map((j) => `<button class="btn ${etat.statsJours === j ? "plein" : ""}" data-jours="${j}">${j} jours</button>`).join("")}</div>`) + `<div id="st"><p class="vide">Chargement...</p></div>`;
   dessinerStats();
   clearInterval(minuteurLive);
@@ -1003,7 +1144,7 @@ async function dessinerStats() {
 // ======================================================================
 function pModeles() {
   const mods = etat.d.modeles || [];
-  $("#page").innerHTML = entete("Modèles de courriels", "Textes prêts pour les candidatures, relances et remerciements. Variables : {entreprise}, {poste}, {contact}, {envoyeLe}, {signature}.",
+  $("#page").innerHTML = entete("Mes modèles de courriels", "Mes textes prêts pour les candidatures, relances et remerciements. Ces mots se remplacent tout seuls : {entreprise}, {poste}, {contact}, {envoyeLe}, {signature}.",
     `<button class="btn laiton" data-act="ajout-modele">Nouveau modèle</button>`) + `<div class="pile" id="mods">${mods.map((m, i) => `<section class="carte"><div class="grille-form">
       <label class="champ"><span>Nom</span><input data-mod="${i}" data-mk="nom" value="${E(m.nom)}"></label>
       <label class="champ"><span>CV joint par défaut</span><select data-mod="${i}" data-mk="cv"><option value="" ${!m.cv ? "selected" : ""}>Aucun</option><option value="carriere" ${m.cv === "carriere" ? "selected" : ""}>Carrière</option><option value="barman" ${m.cv === "barman" ? "selected" : ""}>Barman</option></select></label>
@@ -1019,9 +1160,9 @@ function pModeles() {
 // ======================================================================
 function pReglages() {
   const r = etat.d.reglages;
-  $("#page").innerHTML = entete("Réglages", "Accès, relances, expéditeur et état des connexions.") + `
+  $("#page").innerHTML = entete("Réglages", "Qui a accès, délai de relance, ma signature et l'état des connexions.") + `
   <div class="grille g2">
-    <section class="carte"><h2>Accès à l'admin</h2><label class="champ"><span>Adresses Google autorisées (une par ligne)</span><textarea id="r-acces" rows="5">${E((r.acces || []).join("\n"))}</textarea></label>
+    <section class="carte"><h2>Qui a accès à mon espace</h2><label class="champ"><span>Adresses Google autorisées (une par ligne)</span><textarea id="r-acces" rows="5">${E((r.acces || []).join("\n"))}</textarea></label>
       <p class="aide">Chaque adresse doit être un compte Google. Pour info@sylvainbrochu.ca, il faut créer un compte Google avec cette adresse (accounts.google.com, « Utiliser mon adresse e-mail actuelle »).</p></section>
     <section class="carte"><h2>Courriels</h2><div class="grille-form">
       <label class="champ"><span>Nom de l'expéditeur</span><input id="r-nom" value="${E(r.expediteurNom)}"></label>
@@ -1048,7 +1189,8 @@ function ouvrirModale(titre, contenu, pied, brancher) {
   $(".fermer", m).onclick = fermerModale;
   m.onclick = (e) => { if (e.target === m) fermerModale(); };
   brancher && brancher(m);
-  const premier = $("input, textarea, select", m); if (premier) premier.focus();
+  // Le focus va sur la fenêtre (pas sur un champ : évite d'ouvrir le clavier sur téléphone et de surligner un champ).
+  const f = $(".fenetre", m); f.tabIndex = -1; f.focus({ preventScroll: true });
 }
 function fermerModale() { const m = $("#modale"); m.hidden = true; m.innerHTML = ""; document.body.style.overflow = ""; }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#modale").hidden) fermerModale(); });
@@ -1121,34 +1263,41 @@ document.addEventListener("click", async (e) => {
       const m = $("#lecteur")._message; const ex = m.de[0] || {};
       return ficheCandidature({ id: uid(), entreprise: domaine(ex.courriel).split(".")[0] || ex.nom, contact: ex.nom || "", courriel: ex.courriel, statut: "envoye", type: "offre", cv: "carriere", priorite: 2, objet: m.sujet, historique: [] }, true);
     }
-    case "rafraichir-offres": { const el = $("#liste-off"); if (el) el.innerHTML = `<p class="vide">Recherche des offres...</p>`; etat.offres = null; return listerOffres(undefined, true); }
+    case "rafraichir-offres": { if (!etat.offres) return listerOffres(); const avant = etat.offres.maj; await mettreAJourOffres(true); if (etat.offres && etat.offres.maj === avant) toast(`Les offres sont déjà à jour (${ilYa(Date.parse(avant))}).`); return; }
+    case "lire-reponse": {
+      if (!cand) return;
+      cand.reponseTraitee = true; sauver("candidatures");
+      etat.boite.dossier = "recus"; etat.boite.q = cand.courriel || nomCourt(cand); etat.boite.ouvert = null; delete etat.boite.listes.recus;
+      if (etat.page === "courriels") return pCourriels(); location.hash = "#courriels"; return;
+    }
+    case "voir-brouillon": return cand && voirBrouillon(cand);
     case "lire-offre": {
       const o = offreParId(t.dataset.oid); const box = document.getElementById("det-" + t.dataset.oid); if (!o || !box) return;
       if (!box.hidden) { box.hidden = true; t.textContent = "Lire l'offre"; return; }
-      box.hidden = false; t.textContent = "Fermer"; box.innerHTML = `<p class="aide">Lecture de l'offre...</p>`;
+      box.hidden = false; t.textContent = "Fermer l'offre"; box.innerHTML = `<p class="aide"><span class="tourne"></span> Je lis l'offre...</p>`;
       try {
         const d = await api(`/api/offres/?detail=${encodeURIComponent(o.url)}&titre=${encodeURIComponent(o.titre || "")}`);
         const infos = [d.salaire && `Salaire : ${d.salaire}`, d.contrat && `Contrat : ${d.contrat}`, d.echeance && `Date limite : ${dateCourte(d.echeance)}`].filter(Boolean);
-        box.innerHTML = `<div class="guide ${d.courriel ? "" : "site"}"><b>${d.courriel ? `Candidature par courriel : ${E(d.courriel)}` : "Candidature sur le site de l'employeur"}</b>${infos.length ? `<br>${infos.map(E).join(" | ")}` : ""}</div>
-          <div class="corps-offre">${E(d.description || "Texte non disponible : ouvre le site.")}</div>`;
+        box.innerHTML = `<div class="guide ${d.courriel ? "g-courriel" : "g-site"}"><span class="mode">${d.courriel ? "On postule par courriel" : "On postule sur le site de l'employeur"}</span>${d.courriel ? `<p>À ${E(d.courriel)}</p>` : ""}${infos.length ? `<p>${infos.map(E).join(" | ")}</p>` : ""}</div>
+          <div class="corps-offre">${E(d.description || "Le texte n'a pas pu être lu : j'ouvre l'offre avec son titre.")}</div>`;
       } catch (err) { box.innerHTML = `<p class="vide">${E(err.message)}</p>`; }
       return;
     }
-    case "masquer-offre": (etat.d["offres-masquees"] = etat.d["offres-masquees"] || []).push(t.dataset.oid); sauver("offres-masquees"); return listerOffres();
+    case "masquer-offre": (etat.d["offres-masquees"] = etat.d["offres-masquees"] || []).push(t.dataset.oid); sauver("offres-masquees"); toast("C'est noté : je ne verrai plus cette offre."); majCompteurs(); return listerOffres();
     case "retirer-offre": etat.d["offres-sauvees"] = (etat.d["offres-sauvees"] || []).filter((x) => x.id !== t.dataset.oid); sauver("offres-sauvees"); return listerOffres();
     case "offre-vers-cand": {
       const o = offreParId(t.dataset.oid); if (!o) return;
       const c = { id: uid(), entreprise: o.entreprise || "", poste: o.titre, ville: o.lieu || "", type: o.profil === "temporaire" ? "temporaire" : "offre", cv: o.profil === "temporaire" ? "barman" : "carriere", lien: o.url, statut: "a_preparer", priorite: 2, salaire: o.salaire || "", historique: [] };
       noter(c, `Ajoutée depuis les offres (${o.source || "ajout manuel"})`); etat.d.candidatures.unshift(c); sauver("candidatures");
-      listerOffres();
+      if (etat.page === "tableau") offresAccueil(); else listerOffres();
       return ficheCandidature(c);
     }
-    case "ajouter-offre": return ouvrirModale("Ajouter une offre", `<div class="grille-form">
+    case "ajouter-offre": return ouvrirModale("J'ajoute une offre", `<p class="aide">Une offre trouvée ailleurs (Indeed, LinkedIn, un ami...). Je colle son lien.</p><div class="grille-form">
         <label class="champ large"><span>Lien de l'offre</span><input name="url" type="url" required></label><label class="champ"><span>Titre du poste</span><input name="titre"></label>
         <label class="champ"><span>Entreprise</span><input name="entreprise"></label><label class="champ"><span>Lieu</span><input name="lieu" value="Montréal"></label>
-        <label class="champ"><span>Type</span><select name="profil"><option value="carriere">Carrière</option><option value="temporaire">Temporaire</option></select></label></div>`,
+        <label class="champ"><span>Type</span><select name="profil"><option value="carriere">Carrière</option><option value="temporaire">Bar et service</option></select></label></div>`,
       `<span></span><button class="btn plein" data-m="ok">Ajouter</button>`, (m) => {
-        $('[data-m="ok"]', m).onclick = () => { const o = { id: uid(), source: "Ajout manuel", date: new Date().toISOString() }; $$("[name]", m).forEach((x) => { o[x.name] = x.value.trim(); }); if (!o.url) return toast("Le lien est requis.", true); (etat.d["offres-sauvees"] = etat.d["offres-sauvees"] || []).unshift(o); sauver("offres-sauvees"); fermerModale(); etat.profilOffres = "sauvees"; pOffres(); };
+        $('[data-m="ok"]', m).onclick = () => { const o = { id: uid(), source: "Ajout manuel", date: new Date().toISOString() }; $$("[name]", m).forEach((x) => { o[x.name] = x.value.trim(); }); if (!o.url) return toast("Je colle le lien de l'offre.", true); (etat.d["offres-sauvees"] = etat.d["offres-sauvees"] || []).unshift(o); sauver("offres-sauvees"); fermerModale(); etat.profilOffres = "sauvees"; pOffres(); };
       });
     case "cv-pdf": return pdfCV(false);
     case "cv-publier": return pdfCV(true);

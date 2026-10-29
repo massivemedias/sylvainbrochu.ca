@@ -3,7 +3,7 @@
 // Temporaire (bar, service) : Hôtellerie Jobs, Guichet-Emplois.
 // Aussi : Grenier aux emplois, Cultive, Jobillico, Talent.com, CQT, Eluta,
 // et les alertes courriel (Indeed, LinkedIn, Glassdoor, Jobboom) reçues sur info@.
-// GET ?rafraichir=1 pour ignorer le cache (3 h).
+// GET : dernier résultat gardé (14 jours). ?rafraichir=1 : nouvelle collecte si le résultat a plus de 10 min. Cron Vercel quotidien.
 import { createHash } from "node:crypto";
 import { exiger } from "./_lib/auth.js";
 import { cmd } from "./_lib/kv.js";
@@ -368,14 +368,21 @@ async function localiser(r, geo, budgetMs = 18000) {
   return geo;
 }
 
+// Le dernier résultat est gardé 14 jours : l'admin l'affiche tout de suite, puis demande une mise à jour
+// en arrière-plan quand il a plus d'une heure (?rafraichir=1). Un verrou évite deux collectes en même temps.
+const CACHE_OFFRES = "sb:cache:offres";
 async function offresEnCache(rafraichir) {
-  if (!rafraichir) {
-    const c = await cmd("GET", "sb:cache:offres");
-    if (c) return JSON.parse(c);
-  }
-  const r = await collecter();
-  await cmd("SET", "sb:cache:offres", JSON.stringify(r), "EX", 3 * 3600);
-  return r;
+  let cache = null;
+  try { cache = JSON.parse((await cmd("GET", CACHE_OFFRES)) || "null"); } catch { cache = null; }
+  if (cache && !rafraichir) return cache;
+  if (cache && Date.now() - Date.parse(cache.maj) < 10 * 60e3) return cache; // déjà frais
+  const verrou = await cmd("SET", "sb:verrou:offres", "1", "NX", "EX", 90);
+  if (!verrou && cache) return cache; // une collecte est déjà en cours
+  try {
+    const r = await collecter();
+    await cmd("SET", CACHE_OFFRES, JSON.stringify(r), "EX", 14 * 86400);
+    return r;
+  } finally { try { await cmd("DEL", "sb:verrou:offres"); } catch { /* le verrou expire seul */ } }
 }
 
 // ---------- Détail d'une offre : texte complet, salaire, date limite, façon de postuler ----------
@@ -420,7 +427,7 @@ function salaireLD(b) {
   const t = v.minValue && v.maxValue && v.minValue !== v.maxValue ? `${n(v.minValue)} à ${n(v.maxValue)}` : n(v.value ?? v.minValue ?? v.maxValue);
   return t ? t + (u ? ` / ${u}` : "") : "";
 }
-const SITES_EMPLOI = /(talent\.com|indeed|jobillico|grenier\.qc|cultive\.ca|guichetemplois|jobbank|hotelleriejobs|lever\.co|teamtailor|eluta|linkedin|glassdoor|jobboom|cqt\.ca|sentry|example|wixpress|godaddy)/i;
+const SITES_EMPLOI = /(talent\.com|indeed|jobillico|grenier\.qc|cultive\.ca|guichetemplois|jobbank|hotelleriejobs|lever\.co|teamtailor|eluta|linkedin|glassdoor|jobboom|cqt\.ca|sentry|example|wixpress|godaddy|^test\d*\.|domain\.|email\.com$|courriel\.com$|exemple)/i;
 function courrielDe(texte) {
   const l = [...new Set(String(texte || "").match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}/gi) || [])]
     .map((x) => x.toLowerCase().replace(/\.$/, ""))
@@ -447,7 +454,7 @@ function urlPermise(s) {
 }
 export async function detailOffre(url, titreConnu = "") {
   const ok = urlPermise(url); if (!ok) throw Object.assign(new Error("Lien d'offre invalide"), { status: 400 });
-  const cle = "sb:detail2:" + id(ok);
+  const cle = "sb:detail3:" + id(ok);
   try { const c = await cmd("GET", cle); if (c) return JSON.parse(c); } catch { /* pas de cache */ }
   const r = await obtenir(ok, { headers: { "Accept-Language": "fr-CA,fr;q=0.9,en;q=0.6", Accept: "text/html,*/*" } });
   const h = cfEmails(await r.text());
@@ -484,8 +491,19 @@ export async function detailOffre(url, titreConnu = "") {
   return d;
 }
 
+// Tâche planifiée Vercel (une fois par jour, voir vercel.json) : prépare les offres avant que Sylvain ouvre l'admin.
+function estCron(req) {
+  const s = process.env.CRON_SECRET;
+  if (s) return req.headers.authorization === `Bearer ${s}`;
+  return /vercel-cron/i.test(String(req.headers["user-agent"] || ""));
+}
+
 export default async function handler(req, res) {
   try {
+    if (req.method === "GET" && estCron(req)) {
+      const r = await offresEnCache(true);
+      return json(res, 200, { ok: true, offres: r.offres.length, maj: r.maj });
+    }
     const u = await exiger(req, res); if (!u) return;
     if (req.method !== "GET") return json(res, 405, { erreur: "Méthode non permise" });
     const q = parametres(req);
