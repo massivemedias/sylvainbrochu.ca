@@ -22,17 +22,27 @@ export const courrielPret = () => Boolean(MOT_DE_PASSE);
 const INFO = "info@sylvainbrochu.ca";
 
 async function connecter() {
-  const essais = motVerifie ? [MOT_DE_PASSE] : CANDIDATS;
+  let essais = motVerifie ? [MOT_DE_PASSE] : CANDIDATS;
+  if (!motVerifie) {
+    // Le bon bloc est mémorisé pour que les nouvelles instances ne refassent pas tous les essais.
+    const i = Number(await cmd("GET", "sb:mail:bloc").catch(() => null));
+    if (Number.isInteger(i) && CANDIDATS[i]) essais = [CANDIDATS[i], ...CANDIDATS.filter((_, k) => k !== i)];
+  }
   let derniere;
   for (const pass of essais) {
-    const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user: UTILISATEUR, pass }, logger: false });
-    try {
-      await client.connect();
-      MOT_DE_PASSE = pass; motVerifie = true;
-      return client;
-    } catch (e) {
-      derniere = e;
-      if (!e.authenticationFailed) throw e;
+    for (let tentative = 0; tentative < 2; tentative++) {
+      const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user: UTILISATEUR, pass }, logger: false });
+      try {
+        await client.connect();
+        if (!motVerifie) await cmd("SET", "sb:mail:bloc", String(CANDIDATS.indexOf(pass))).catch(() => null);
+        MOT_DE_PASSE = pass; motVerifie = true;
+        return client;
+      } catch (e) {
+        derniere = e;
+        if (e.authenticationFailed) break;
+        if (tentative === 0) { await new Promise((r) => setTimeout(r, 800)); continue; }
+        throw e;
+      }
     }
   }
   throw derniere;
