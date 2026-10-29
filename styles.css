@@ -705,3 +705,5 @@ dialog.panier::backdrop { background: rgba(10,9,12,.6); }
   .produit-texte .prix { font-size: .85rem; margin-bottom: 10px; }
   .produit-texte .bouton { padding: 10px 14px; font-size: .85rem; }
 }
+.fige { display: block; width: 100%; overflow: hidden; border-radius: 2px; background: var(--nuit-2); }
+.fige img { width: 100%; filter: brightness(.94); }
