@@ -339,6 +339,7 @@ function changerStatut(c, s) {
   sauver("candidatures");
 }
 
+const detailsEssayes = new Set(); // une lecture automatique par fiche et par session
 function guidePostuler(c) {
   if (ACTIFS.includes(c.statut) || ["refus", "ferme"].includes(c.statut)) return c.envoyeLe ? `<div class="guide fait"><b>Candidature envoyée le ${dateCourte(c.envoyeLe)}.</b> ${relance(c) ? `Relance proposée le ${dateCourte(relance(c).due)}.` : ""}</div>` : "";
   const cv = c.cv === "barman" ? "barman" : "carrière";
@@ -349,7 +350,7 @@ function guidePostuler(c) {
 function ficheCandidature(c, nouvelle = false) {
   const v = (k) => E(c[k] || "");
   const aPostuler = ["a_preparer", "brouillon"].includes(c.statut);
-  const lecture = !nouvelle && c.lien && !c.description && aPostuler && !c.detailEssaye;
+  const lecture = !nouvelle && c.lien && !c.description && aPostuler && !detailsEssayes.has(c.id);
   ouvrirModale(nouvelle ? "Nouvelle candidature" : E(c.entreprise), `
     <div id="guide-post" data-cid="${E(c.id)}">${lecture ? `<div class="guide"><b>Lecture de l'offre...</b> La fiche se remplit toute seule (texte de l'offre, lettre, façon de postuler).</div>` : guidePostuler(c)}</div>
     <div class="grille-form">
@@ -405,7 +406,7 @@ function ficheCandidature(c, nouvelle = false) {
       lire(); marquerEnvoyee(c); fermerModale(); rendrePage();
     };
     if (lecture) {
-      c.detailEssaye = true;
+      detailsEssayes.add(c.id);
       const copie = { ...c };
       remplirDepuisOffre(copie).then(() => {
         Object.assign(c, Object.fromEntries(Object.entries(copie).filter(([k, val]) => val && !String(c[k] || "").trim())), { description: copie.description, methode: copie.methode, contrat: copie.contrat });
@@ -508,6 +509,7 @@ function lettrePour(c) {
 async function remplirDepuisOffre(c, forcerLettre = false) {
   if (!c.lien) return c;
   const d = await api(`/api/offres/?detail=${encodeURIComponent(c.lien)}&titre=${encodeURIComponent(c.poste || "")}`);
+  if (typeof d.description !== "string") throw new Error("lecture des offres pas encore disponible");
   const vide = (k) => !String(c[k] || "").trim();
   if (vide("entreprise") && d.entreprise) c.entreprise = d.entreprise;
   if (vide("poste") && d.titre) c.poste = d.titre;
