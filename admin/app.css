@@ -267,3 +267,16 @@ table.tab { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .mode-emploi[open] summary::after { content: "-"; }
 .etapes { margin: 14px 0 0; padding-left: 22px; display: grid; gap: 8px; font-size: .92rem; line-height: 1.5; }
 .etapes a { color: var(--cedre); }
+
+/* Menus déroulants : flèche dessinée, toujours dans le cadre */
+select, .champ select, select.choix, .tab select {
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%236b635b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 12px 8px;
+  padding-right: 36px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; cursor: pointer; max-width: 100%;
+}
+.tab select { background-position: right 8px center; background-size: 10px 7px; padding-right: 26px; }
+select:hover { border-color: var(--texte); }
+select::-ms-expand { display: none; }
+select option { background: #fff; color: var(--texte); }
