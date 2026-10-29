@@ -78,7 +78,7 @@ function aFaire() {
     const r = relance(c);
     if (r && r.enRetard) out.push({ type: "relance", c, tri: r.due, texte: `Relancer ${c.entreprise}`, detail: `Envoyé le ${dateCourte(c.envoyeLe)}, sans réponse` });
     if (c.reponseLe && !c.reponseTraitee && ACTIFS.includes(c.statut)) out.push({ type: "reponse", c, tri: c.reponseLe, texte: `Réponse de ${c.entreprise}`, detail: `Reçue le ${dateCourte(c.reponseLe)}` });
-    if (c.statut === "a_preparer" && c.echeance && ecart(auj, c.echeance) <= 21 && c.echeance >= auj) out.push({ type: "echeance", c, tri: c.echeance, texte: `Postuler chez ${c.entreprise}`, detail: `Date limite le ${dateCourte(c.echeance)}` });
+    if (c.statut === "a_preparer") out.push({ type: "echeance", c, tri: (c.echeance && c.echeance >= auj ? c.echeance : "9999") + (c.priorite || 3), texte: `Postuler chez ${c.entreprise}`, detail: `${c.poste || ""}${c.echeance && c.echeance >= auj ? ` | date limite le ${dateCourte(c.echeance)}` : ""} | ${c.courriel ? "par courriel" : "sur le site"}` });
     if (c.entrevueLe && c.entrevueLe.slice(0, 10) >= auj) out.push({ type: "entrevue", c, tri: c.entrevueLe, texte: `Entrevue : ${c.entreprise}`, detail: `Le ${dateCourte(c.entrevueLe)}${c.entrevueLe.length > 10 ? " à " + c.entrevueLe.slice(11, 16) : ""}` });
   });
   const brouillons = (etat.d.candidatures || []).filter((c) => c.statut === "brouillon");
@@ -250,6 +250,7 @@ function pTableau() {
     <div class="kpi"><b>${reponses}</b><span>Réponses reçues</span></div>
     <div class="kpi ${relances ? "alerte" : ""}"><b>${relances}</b><span>Relances à faire</span></div>
   </div>
+  ${modeEmploi()}
   <div class="grille g2">
     <section class="carte"><header><h2>À faire</h2><a class="btn petit" href="#candidatures">Candidatures</a></header>
       ${taches.length ? `<ul class="liste">${taches.slice(0, 9).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>` : `<p class="vide">Rien d'urgent. Les relances apparaissent ici ${R()} jours après un envoi sans réponse.</p>`}
@@ -261,6 +262,7 @@ function pTableau() {
       <textarea class="notes-libres" id="notes" placeholder="Contacts à appeler, idées, suivis...">${E(typeof etat.d.notes === "string" ? etat.d.notes : "")}</textarea></section>
   </div>`;
   $("#notes").oninput = (e) => { etat.d.notes = e.target.value; sauver("notes", 900); };
+  const me = $(".mode-emploi"); if (me) me.ontoggle = () => { try { localStorage.setItem("sb-mode-emploi", me.open ? "ouvert" : "ferme"); } catch { /* stockage indisponible */ } };
   chargerStats(30).then((s) => {
     if (etat.page !== "tableau") return;
     $("#k-live").textContent = s.enLigne.length; $("#k-vis").textContent = s.totaux.visiteurs; $("#k-cv").textContent = s.totaux.cv;
@@ -279,10 +281,21 @@ function pTableau() {
     $("#d-offres").innerHTML = l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise)}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Temporaire" : "Carrière"}</small></div><a class="btn petit" href="${E(x.url)}" target="_blank" rel="noopener">Voir</a></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`;
   }).catch((e) => { const el = $("#d-offres"); if (el) el.innerHTML = `<p class="vide">${E(e.message)}</p>`; });
 }
+function modeEmploi() {
+  let ferme = false; try { ferme = localStorage.getItem("sb-mode-emploi") === "ferme"; } catch { /* stockage indisponible */ }
+  return `<details class="carte mode-emploi" ${ferme ? "" : "open"}>
+    <summary><h2>Comment postuler</h2><span class="aide">4 étapes, la fiche se remplit toute seule</span></summary>
+    <ol class="etapes">
+      <li><b>Choisir une offre.</b> Dans <a href="#offres">Offres d'emploi</a>, « Lire l'offre » affiche le texte complet. Si elle plaît : « Ajouter aux candidatures ».</li>
+      <li><b>Relire la fiche.</b> Elle se remplit seule : texte de l'offre, lettre adaptée au poste, CV à joindre, date limite, et la façon de postuler (courriel ou site).</li>
+      <li><b>Envoyer.</b> Par courriel : « Préparer le courriel », le CV est joint, on vérifie et on envoie. Sur un site : « Postuler sur le site », la lettre est copiée, on la colle dans le formulaire et on joint le CV.</li>
+      <li><b>Marquer envoyée</b> (seulement pour les sites, les courriels se marquent tout seuls). Une relance est proposée ici ${R()} jours plus tard si personne ne répond.</li>
+    </ol></details>`;
+}
 function boutonTache(t) {
   if (t.type === "relance") return `<button class="btn petit laiton" data-act="relancer" data-id="${t.c.id}">Préparer la relance</button>`;
   if (t.type === "brouillon") return `<a class="btn petit" href="#courriels" data-dossier="brouillons">Brouillons</a>`;
-  if (t.type === "echeance") return `<button class="btn petit" data-act="preparer" data-id="${t.c.id}">Préparer</button>`;
+  if (t.type === "echeance") return `<button class="btn petit laiton" data-act="fiche" data-id="${t.c.id}">Ouvrir la fiche</button>`;
   if (t.type === "reponse") return `<button class="btn petit" data-act="fiche" data-id="${t.c.id}">Ouvrir</button>`;
   return `<button class="btn petit" data-act="fiche" data-id="${t.c.id}">Ouvrir</button>`;
 }
@@ -312,7 +325,7 @@ function pCandidatures() {
     <td>${c.reponseLe ? `<span class="pastille p-reponse">${dateCourte(c.reponseLe)}</span>` : '<span class="aide">-</span>'}</td>
     <td><div class="actions" style="flex-wrap:nowrap">
       ${r && r.enRetard ? `<button class="btn petit laiton" data-act="relancer" data-id="${c.id}">Relancer</button>` : ""}
-      ${["a_preparer"].includes(c.statut) && (c.courriel || c.formulaire) ? `<button class="btn petit" data-act="preparer" data-id="${c.id}">${c.courriel ? "Préparer" : "Postuler"}</button>` : ""}
+      ${["a_preparer", "brouillon"].includes(c.statut) && (c.courriel || c.formulaire || c.lien) ? `<button class="btn petit laiton" data-act="preparer" data-id="${c.id}" title="${c.courriel ? "Prépare le courriel avec le CV joint" : "Copie la lettre et ouvre le site de l'employeur"}">${c.courriel ? "Préparer le courriel" : "Postuler sur le site"}</button>${!c.courriel ? `<button class="btn petit" data-act="envoyee" data-id="${c.id}">Envoyée</button>` : ""}` : ""}
       <button class="btn petit" data-act="fiche" data-id="${c.id}">Ouvrir</button></div></td></tr>`; }).join("") || `<tr><td colspan="7" class="vide" style="text-align:center;padding:30px">Aucune candidature dans ce filtre.</td></tr>`}
   </tbody></table></div>`;
   $("#rech").oninput = (e) => { etat.rech = e.target.value; const pos = e.target.selectionStart; pCandidatures(); const r = $("#rech"); r.focus(); r.setSelectionRange(pos, pos); };
@@ -326,9 +339,19 @@ function changerStatut(c, s) {
   sauver("candidatures");
 }
 
+function guidePostuler(c) {
+  if (ACTIFS.includes(c.statut) || ["refus", "ferme"].includes(c.statut)) return c.envoyeLe ? `<div class="guide fait"><b>Candidature envoyée le ${dateCourte(c.envoyeLe)}.</b> ${relance(c) ? `Relance proposée le ${dateCourte(relance(c).due)}.` : ""}</div>` : "";
+  const cv = c.cv === "barman" ? "barman" : "carrière";
+  if (c.courriel) return `<div class="guide"><b>Comment postuler : par courriel à ${E(c.courriel)}</b><ol><li>Relis la lettre plus bas, ajuste si besoin.</li><li>Clique « Préparer le courriel » : le CV ${cv} est joint tout seul.</li><li>Vérifie et envoie. La candidature passe en « Envoyé » automatiquement.</li></ol></div>`;
+  if (c.formulaire || c.lien) return `<div class="guide"><b>Comment postuler : sur le site de l'employeur</b><ol><li>Relis la lettre plus bas, ajuste si besoin.</li><li>Clique « Postuler sur le site » : la lettre est copiée et le site s'ouvre.</li><li>Sur le site : colle la lettre (Cmd+V) et joins le CV ${cv} (bouton « CV ${cv} » pour le télécharger).</li><li>Une fois envoyé, reviens ici et clique « Marquer envoyée ».</li></ol></div>`;
+  return `<div class="guide"><b>Il manque le courriel du recruteur ou le lien de l'offre</b> pour savoir comment postuler.</div>`;
+}
 function ficheCandidature(c, nouvelle = false) {
   const v = (k) => E(c[k] || "");
+  const aPostuler = ["a_preparer", "brouillon"].includes(c.statut);
+  const lecture = !nouvelle && c.lien && !c.description && aPostuler && !c.detailEssaye;
   ouvrirModale(nouvelle ? "Nouvelle candidature" : E(c.entreprise), `
+    <div id="guide-post" data-cid="${E(c.id)}">${lecture ? `<div class="guide"><b>Lecture de l'offre...</b> La fiche se remplit toute seule (texte de l'offre, lettre, façon de postuler).</div>` : guidePostuler(c)}</div>
     <div class="grille-form">
       <label class="champ"><span>Entreprise</span><input name="entreprise" value="${v("entreprise")}" required></label>
       <label class="champ"><span>Poste</span><input name="poste" value="${v("poste")}"></label>
@@ -347,14 +370,60 @@ function ficheCandidature(c, nouvelle = false) {
       <label class="champ large"><span>Lien de l'offre</span><input name="lien" type="url" value="${v("lien")}"></label>
       <label class="champ large"><span>Formulaire en ligne (si pas de courriel)</span><input name="formulaire" type="url" value="${v("formulaire")}"></label>
       <label class="champ large"><span>Objet du courriel</span><input name="objet" value="${v("objet")}"></label>
-      <label class="champ large"><span>Texte de candidature</span><textarea name="texte" rows="8">${v("texte")}</textarea></label>
+      <label class="champ large"><span>Texte de candidature (lettre)</span><textarea name="texte" rows="12">${v("texte")}</textarea></label>
+      <div class="large actions"><button type="button" class="btn petit" data-m="copier">Copier la lettre</button>${c.lien ? `<button type="button" class="btn petit" data-m="refaire">Refaire la lettre à partir de l'offre</button>` : ""}<a class="btn petit" href="/api/cv/?v=${c.cv === "barman" ? "barman" : "carriere"}" target="_blank" rel="noopener">CV ${c.cv === "barman" ? "barman" : "carrière"} (PDF)</a></div>
       <label class="champ large"><span>Notes</span><textarea name="note" rows="3">${v("note")}</textarea></label>
     </div>
+    <div id="texte-offre">${c.description ? `<details class="texte-offre" open><summary>Texte complet de l'offre${c.contrat ? ` (${E(c.contrat)})` : ""}</summary><div class="corps-offre">${E(c.description)}</div></details>` : ""}</div>
     ${c.historique?.length ? `<div><span class="etiquette">Historique</span><ul class="historique">${c.historique.slice(0, 12).map((h) => `<li><time>${dateCourte(h.date)}</time><span>${E(h.texte)}</span></li>`).join("")}</ul></div>` : ""}`,
   `<div class="actions">${!nouvelle ? `<button class="btn danger" data-m="supprimer">Supprimer</button>` : ""}${c.lien ? `<a class="btn" href="${E(c.lien)}" target="_blank" rel="noopener">Voir l'offre</a>` : ""}</div>
-   <div class="actions">${!nouvelle && c.courriel ? `<button class="btn" data-m="courriel">Préparer le courriel</button>` : ""}<button class="btn plein" data-m="enregistrer">Enregistrer</button></div>`,
+   <div class="actions">${!nouvelle && aPostuler ? `<button class="btn laiton" data-m="courriel" ${c.courriel ? "" : "hidden"}>Préparer le courriel</button><button class="btn laiton" data-m="site" ${!c.courriel && (c.formulaire || c.lien) ? "" : "hidden"}>Postuler sur le site</button><button class="btn" data-m="envoyee">Marquer envoyée</button>` : ""}<button class="btn plein" data-m="enregistrer">Enregistrer</button></div>`,
   (racine) => {
     const lire = () => { $$("[name]", racine).forEach((el) => { c[el.name] = el.name === "priorite" ? Number(el.value) : el.value.trim(); }); };
+    let modifie = false;
+    racine.addEventListener("input", () => { modifie = true; });
+    const majBoutons = () => {
+      const co = $('[data-m="courriel"]', racine), si = $('[data-m="site"]', racine);
+      const mail = $('[name="courriel"]', racine).value.trim(), form = $('[name="formulaire"]', racine).value.trim() || $('[name="lien"]', racine).value.trim();
+      if (co) co.hidden = !mail; if (si) si.hidden = !!mail || !form;
+    };
+    $('[name="courriel"]', racine).addEventListener("input", majBoutons);
+    $('[name="formulaire"]', racine).addEventListener("input", majBoutons);
+    $('[data-m="copier"]', racine).onclick = async () => { const t = $('[name="texte"]', racine).value; toast(t ? ((await copier(avecSignature(t))) ? "Lettre copiée." : "Copie impossible, sélectionne le texte à la main.") : "La lettre est vide.", !t); };
+    const refaire = $('[data-m="refaire"]', racine);
+    if (refaire) refaire.onclick = async () => {
+      lire(); refaire.disabled = true; refaire.textContent = "Lecture de l'offre...";
+      try { if (!c.description) await remplirDepuisOffre(c); const l = lettrePour(c); $('[name="texte"]', racine).value = l.texte; $('[name="objet"]', racine).value = l.objet; toast("Lettre refaite à partir de l'offre. Relis-la avant d'envoyer."); }
+      catch (err) { toast(err.message, true); }
+      refaire.disabled = false; refaire.textContent = "Refaire la lettre à partir de l'offre";
+    };
+    const si = $('[data-m="site"]', racine);
+    if (si) si.onclick = async () => { lire(); sauver("candidatures"); await postulerSite(c); };
+    const env = $('[data-m="envoyee"]', racine);
+    if (env) env.onclick = () => {
+      if (env.dataset.ok !== "1") { env.dataset.ok = "1"; env.textContent = "Confirmer : c'est envoyé"; return; }
+      lire(); marquerEnvoyee(c); fermerModale(); rendrePage();
+    };
+    if (lecture) {
+      c.detailEssaye = true;
+      const copie = { ...c };
+      remplirDepuisOffre(copie).then(() => {
+        Object.assign(c, Object.fromEntries(Object.entries(copie).filter(([k, val]) => val && !String(c[k] || "").trim())), { description: copie.description, methode: copie.methode, contrat: copie.contrat });
+        sauver("candidatures");
+        if ($("#guide-post")?.dataset.cid !== c.id) return; // fiche fermée entre-temps
+        if (!modifie) return ficheCandidature(c);
+        $$("[name]", racine).forEach((el) => { if (!el.value && copie[el.name]) el.value = copie[el.name]; });
+        $("#guide-post").innerHTML = guidePostuler(c);
+        $("#texte-offre").innerHTML = c.description ? `<details class="texte-offre" open><summary>Texte complet de l'offre</summary><div class="corps-offre">${E(c.description)}</div></details>` : "";
+        majBoutons();
+      }).catch((err) => {
+        const l = lettrePour(c); let n = 0;
+        if (!c.texte) { c.texte = l.texte; n++; } if (!c.objet) { c.objet = l.objet; n++; }
+        if (!c.courriel && !c.formulaire) { c.formulaire = c.lien; n++; }
+        if (n) sauver("candidatures");
+        $$("[name]", racine).forEach((el) => { if (!el.value && c[el.name] && $("#guide-post")?.dataset.cid === c.id) el.value = c[el.name]; });
+        const g = $("#guide-post"); if (g && g.dataset.cid === c.id) g.innerHTML = `<div class="guide"><b>L'offre n'a pas pu être lue</b> (${E(err.message)}). Ouvre-la avec « Voir l'offre ».</div>` + guidePostuler(c); });
+    }
     $('[data-m="enregistrer"]', racine).onclick = () => {
       const ancien = (etat.d.candidatures.find((x) => x.id === c.id) || {}).statut;
       lire(); if (!c.entreprise) return toast("Indique au moins l'entreprise.", true);
@@ -378,8 +447,101 @@ const remplir = (t, c = {}) => String(t || "")
   .replaceAll("{contact}", c.contact ? " " + c.contact : "").replaceAll("{envoyeLe}", c.envoyeLe ? dateCourte(c.envoyeLe) : "récemment")
   .replaceAll("{signature}", etat.d.reglages.signature || "");
 
+// ---------- Lettre adaptée à chaque offre ----------
+// Les phrases viennent des deux CV de Sylvain ; on garde celles qui répondent aux mots de l'offre.
+const POINTS = {
+  carriere: [
+    [/(exposition|musée|musee|muséal|galerie|commissaire)/gi, "Chez Age of Union / Never Apart, j'ai planifié et livré plus de 35 expositions et projets culturels, jusqu'à 10 expositions simultanées dans une dizaine de salles."],
+    [/(fabrication|atelier|décor|decor|scénograph|scenograph|accessoire|menuiserie|installation|prototyp)/gi, "Fondateur d'Even Even Design, j'ai dirigé pendant dix ans un réseau de sous-traitants (soudeurs, découpe CNC, souffleurs de verre, monteurs), de la conception à l'installation."],
+    [/(budget|coûts|couts|achats|approvisionnement|fournisseur|négoci|negoci)/gi, "Je gère les budgets de production, les achats et les fournisseurs : pour les accessoires du spectacle du Grand Prix de Formule 1, j'ai négocié les prix et optimisé l'assemblage pour tenir le budget et l'échéancier."],
+    [/(tournée|tournee|international|expédition|expedition|transport|douane|logistique)/gi, "Au Cirque du Soleil, j'ai géré fournisseurs, échéanciers et expéditions internationales (palettes, carnets ATA), et préparé les costumes en tournée internationale avec Varekai."],
+    [/(spectacle|scène|scene|théâtre|theatre|cirque|arts vivants|diffusion)/gi, "J'ai travaillé huit ans au Cirque du Soleil, du siège social à la tournée Varekai, et sur les premières de LOVE à Las Vegas et de Corteo à New York."],
+    [/(événement|evenement|évènement|festival|congrès|congres|corporatif)/gi, "En événementiel, j'ai organisé de grands événements culturels jusqu'à 1 000 invités : logistique, fournisseurs, licences, budget et calendrier."],
+    [/(équipe|equipe|supervis|diriger|encadr|gestion du personnel)/gi, "J'ai dirigé 3 employés à temps plein, environ 5 assistants monteurs, des artisans et des sous-traitants."],
+    [/(bâtiment|batiment|immeuble|entretien|maintenance|gestion des lieux)/gi, "J'ai aussi assuré la gestion opérationnelle d'un bâtiment et de son entretien."],
+    [/(hôtel|hotel|restaura|hôtellerie|hotellerie)/gi, "J'ai créé une centaine de luminaires sur mesure pour l'hôtel-boutique Maison Grinder, des chambres au restaurant, et dirigé l'installation."],
+    [/(anglais|bilingue|english)/gi, "Je travaille en français et en anglais."],
+    [/(\bsap\b|excel|suite office|google workspace)/gi, "J'utilise SAP, Excel et Google Workspace au quotidien."],
+  ],
+  temporaire: [
+    [/(cocktail|mixolog|barman|barmaid|bartender|\bbar\b)/gi, "Barman principal au Parking pendant trois ans, je prépare des cocktails classiques et originaux et je tiens un service rapide en volume."],
+    [/(haut de gamme|luxe|raffiné|raffine|gastronom|hôtel|hotel|prestige)/gi, "J'ai servi en salle et au bar dans un cadre hôtelier raffiné (Vauvert, Hôtel St-Paul) et lors de réceptions privées haut de gamme."],
+    [/(vin\b|vins\b|œnolog|oenolog|sommelier|spiritueux)/gi, "Je soigne la présentation des plats et des vins, avec un service attentif et discret."],
+    [/(banquet|buffet|réception|reception|traiteur|événement|evenement|congrès)/gi, "Chez Foran Événement, j'ai supervisé 175 serveurs et 10 superviseurs pour 1 500 invités au Marché Bonsecours, et je monte salles de banquet et buffets."],
+    [/(caisse|paiement|point de vente|encaiss)/gi, "Je suis à l'aise avec la gestion des caisses et leur fermeture."],
+    [/(superviseur|responsable|chef d'équipe|gérant|gerant|maître d'hôtel|maitre d'hotel)/gi, "J'ai l'habitude de diriger une équipe de service sur le plancher et de régler les imprévus."],
+    [/(pression|rapide|volume|achalandé|rythme)/gi, "Je garde mon calme sous pression, même en grand volume."],
+    [/(anglais|bilingue|english)/gi, "Je travaille en français et en anglais."],
+  ],
+};
+const joli = (s) => { s = String(s || "").trim(); return s.length > 3 && s === s.toUpperCase() ? s.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase()) : s; };
+function posteNet(p) {
+  let s = String(p || "")
+    .replace(/\s*[,|]\s*(temps (plein|partiel)|part[- ]?time|full[- ]?time|contrat.*|permanent.*|saisonnier.*|sur appel.*|occasionnel.*)$/i, "")
+    .replace(/\s+-\s+(.*)$/, (m, suite) => (/^(événements?|évènements?|evenements?|production|spectacles?|expositions?|festivals?|logistique|opérations|banquets?|service|salle|bar)\b/i.test(suite) ? " " + suite : ""))
+    .replace(/\s*\((e|ée|euse|se|trice|rice|ère|s|h\/f|f\/h|m\/f|f\/m)\)/gi, "")
+    .replace(/[·•](e|rice|trice|euse|se|ère|s)\b/gi, "")
+    .replace(/([\p{L}-]+)\s*\/\s*[\p{L}-]+/gu, "$1")
+    .replace(/\s+/g, " ").trim();
+  if (s.length > 3 && s === s.toUpperCase()) s = s.toLowerCase();
+  s = s.replace(/\b(Bar|Banquets?|Service|Salle|Restaurant|Production|Projets?|Événements?|Évènements?|Opérations|Logistique|Spectacles?|Exposition|Atelier|Fabrication|Technique|Gestionnaire|Directeur|Directrice|Coordonnateur|Coordonnatrice|Responsable|Chargé|Chargée)\b/gu, (m, w, i) => (i === 0 ? m : m.toLowerCase()));
+  return /^\p{Lu}\p{Ll}/u.test(s) ? s[0].toLowerCase() + s.slice(1) : s;
+}
+function lettrePour(c) {
+  const temp = c.type === "temporaire" || c.cv === "barman";
+  const source = `${c.poste || ""} ${c.description || ""}`;
+  const choix = POINTS[temp ? "temporaire" : "carriere"]
+    .map(([re, phrase], i) => ({ i, phrase, n: (source.match(re) || []).length }))
+    .filter((x) => x.n > 0).sort((a, b) => b.n - a.n).slice(0, 3).sort((a, b) => a.i - b.i).map((x) => x.phrase);
+  const poste = posteNet(c.poste) || (temp ? "service" : "gestion de production");
+  const chez = c.entreprise ? ` chez ${joli(c.entreprise.split(" (")[0])}` : "";
+  const intro = temp
+    ? "J'ai plus de 10 ans d'expérience au bar, en salle et en service événementiel à Montréal, du Parking au Club de Golf Métropolitain."
+    : "Gestionnaire de production et de projets, j'ai plus de 25 ans d'expérience en événementiel, en arts vivants et en fabrication sur mesure, du Cirque du Soleil au Grand Prix de Formule 1.";
+  const defaut = temp ? "J'ai supervisé des équipes de service lors d'événements jusqu'à 1 500 invités." : "J'ai dirigé pendant dix ans Even Even Design et son réseau de sous-traitants, puis géré les opérations du centre Never Apart, avec plus de 35 expositions livrées.";
+  const points = choix.length ? choix : [defaut];
+  const fin = temp ? "Je suis disponible rapidement. Mon CV est joint." : "Mon CV est joint, et mes projets sont présentés sur www.sylvainbrochu.ca. J'aimerais beaucoup en discuter avec vous.";
+  const texte = `Bonjour${c.contact ? " " + c.contact : ""},\n\nJe vous propose ma candidature au poste de ${poste}${chez}.\n\n${intro} ${points.slice(0, 2).join(" ")}${points[2] ? "\n\n" + points[2] : ""}\n\n${fin}\n\nCordialement,\n\n${etat.d.reglages.signature || ""}`;
+  return { objet: `Candidature, ${poste} - Sylvain Brochu`, texte };
+}
+// Lit l'offre (texte complet, courriel, date limite, lien pour postuler) et complète la fiche sans écraser ce qui est déjà rempli.
+async function remplirDepuisOffre(c, forcerLettre = false) {
+  if (!c.lien) return c;
+  const d = await api(`/api/offres/?detail=${encodeURIComponent(c.lien)}&titre=${encodeURIComponent(c.poste || "")}`);
+  const vide = (k) => !String(c[k] || "").trim();
+  if (vide("entreprise") && d.entreprise) c.entreprise = d.entreprise;
+  if (vide("poste") && d.titre) c.poste = d.titre;
+  if (vide("ville") && d.lieu) c.ville = d.lieu;
+  if (vide("salaire") && d.salaire) c.salaire = d.salaire;
+  if (vide("echeance") && d.echeance) c.echeance = d.echeance;
+  if (vide("courriel") && d.courriel) c.courriel = d.courriel;
+  if (vide("formulaire") && !c.courriel) c.formulaire = d.postuler || c.lien;
+  c.description = d.description || c.description || "";
+  c.contrat = c.contrat || d.contrat || "";
+  c.methode = c.courriel ? "courriel" : "site";
+  if (forcerLettre || vide("texte")) { const l = lettrePour(c); c.texte = l.texte; if (forcerLettre || vide("objet")) c.objet = l.objet; }
+  if (vide("objet")) c.objet = lettrePour(c).objet;
+  if (vide("note")) c.note = c.courriel ? `Postuler par courriel à ${c.courriel}.` : "Postuler sur le site de l'employeur (bouton « Postuler sur le site »).";
+  return c;
+}
+const avecSignature = (t) => { const sig = etat.d.reglages.signature || ""; return sig && t && !t.includes(sig.split("\n")[0] + "\n") ? `${t.trimEnd()}\n\n${sig}` : t; };
+async function copier(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
+// Candidature par le site de l'employeur : la lettre est copiée, le site s'ouvre, puis on marque l'envoi.
+async function postulerSite(c) {
+  const lien = c.formulaire || c.lien; if (!lien) return toast("Ajoute le lien du formulaire dans la fiche.", true);
+  const ok = c.texte ? await copier(avecSignature(c.texte)) : false;
+  window.open(lien, "_blank", "noopener");
+  if (!c.ouvertLe) { c.ouvertLe = jour(); noter(c, "Site de l'employeur ouvert pour postuler"); sauver("candidatures"); }
+  toast(ok ? "Lettre copiée. Colle-la dans le formulaire (Cmd+V), joins le CV, puis clique « Envoyée » ici." : "Site ouvert. Joins le CV et la lettre, puis clique « Envoyée » ici.");
+}
+function marquerEnvoyee(c) {
+  if (!c.envoyeLe) c.envoyeLe = jour();
+  noter(c, c.courriel ? "Marquée envoyée" : "Envoyée sur le site de l'employeur");
+  c.statut = "envoye"; sauver("candidatures"); toast(`Candidature ${c.entreprise} marquée envoyée. Relance proposée dans ${R()} jours.`);
+}
+
 function preparerCandidature(c) {
-  if (!c.courriel && c.formulaire) { window.open(c.formulaire, "_blank", "noopener"); return toast("Formulaire ouvert. Change le statut quand c'est envoyé."); }
+  if (!c.courriel && (c.formulaire || c.lien)) return postulerSite(c);
   const mod = (etat.d.modeles || []).find((m) => m.id === (c.type === "temporaire" ? "temporaire" : c.type === "spontanee" ? "spontanee" : "offre"));
   const sig = etat.d.reglages.signature || "";
   const texte = c.texte ? (sig && !c.texte.includes(sig.split("\n")[0] + "\n") ? `${c.texte.trimEnd()}\n\n${sig}` : c.texte) : remplir(mod?.corps, c);
@@ -616,8 +778,8 @@ async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), for
   etat.carteCadree = false; majCarte(l);
   if (o.geoAttente > 0) localiserOffres();
   el.innerHTML = l.length ? l.map((x) => `<article class="offre"><div><h3>${E(x.titre)}</h3><div class="m"><span><b>${E(x.entreprise || "")}</b></span>${x.lieu ? `<span>${E(x.lieu)}</span>` : ""}${x.contrat ? `<span>${E(x.contrat)}</span>` : ""}${x.salaire ? `<span>${E(x.salaire)}</span>` : ""}<span>${E(x.source || "Ajoutée")}</span>${x.date ? `<span>${dateCourte(x.date)}</span>` : ""}<span class="pastille ${x.profil === "temporaire" ? "p-brouillon" : "p-envoye"}">${x.profil === "temporaire" ? "Temporaire" : "Carrière"}</span></div></div>
-    <div class="actions"><a class="btn petit" href="${E(x.url)}" target="_blank" rel="noopener">Voir l'offre</a>${dejaLiees.has(x.url) ? `<span class="pastille p-reponse">Dans les candidatures</span>` : `<button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Ajouter aux candidatures</button>`}${x.sauvee ? `<button class="btn petit danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}">Masquer</button>`}</div>
-    ${x.resume ? `<p>${E(x.resume)}</p>` : ""}</article>`).join("") : `<p class="vide">Aucune offre dans ce filtre.</p>`;
+    <div class="actions"><button class="btn petit" data-act="lire-offre" data-oid="${x.id}">Lire l'offre</button><a class="btn petit" href="${E(x.url)}" target="_blank" rel="noopener">Site</a>${dejaLiees.has(x.url) ? `<span class="pastille p-reponse">Dans les candidatures</span>` : `<button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Ajouter aux candidatures</button>`}${x.sauvee ? `<button class="btn petit danger" data-act="retirer-offre" data-oid="${x.id}">Retirer</button>` : `<button class="btn petit lien" data-act="masquer-offre" data-oid="${x.id}">Masquer</button>`}</div>
+    ${x.resume ? `<p>${E(x.resume)}</p>` : ""}<div class="detail-offre" id="det-${x.id}" hidden></div></article>`).join("") : `<p class="vide">Aucune offre dans ce filtre.</p>`;
   el._offres = l;
 }
 // ---------- Carte des offres (MapLibre + fond OpenFreeMap « Liberty », style proche de Google Maps) ----------
@@ -887,6 +1049,11 @@ document.addEventListener("click", async (e) => {
     case "nouvelle": return ficheCandidature({ id: uid(), statut: "a_preparer", type: "offre", cv: "carriere", priorite: 2, historique: [] }, true);
     case "fiche": return cand && ficheCandidature(cand);
     case "preparer": return cand && preparerCandidature(cand);
+    case "envoyee": {
+      if (!cand) return;
+      if (t.dataset.ok !== "1") { t.dataset.ok = "1"; t.textContent = "Confirmer"; return; }
+      marquerEnvoyee(cand); return rendrePage();
+    }
     case "relancer": return cand && preparerRelance(cand);
     case "synchro": return synchroniser();
     case "marquer-reponse": if (cand) { cand.reponseLe = jour(); cand.reponseTraitee = false; noter(cand, "Réponse reçue"); sauver("candidatures"); toast("Réponse notée."); } return;
@@ -918,13 +1085,26 @@ document.addEventListener("click", async (e) => {
       return ficheCandidature({ id: uid(), entreprise: domaine(ex.courriel).split(".")[0] || ex.nom, contact: ex.nom || "", courriel: ex.courriel, statut: "envoye", type: "offre", cv: "carriere", priorite: 2, objet: m.sujet, historique: [] }, true);
     }
     case "rafraichir-offres": { const el = $("#liste-off"); if (el) el.innerHTML = `<p class="vide">Recherche des offres...</p>`; etat.offres = null; return listerOffres(undefined, true); }
+    case "lire-offre": {
+      const o = offreParId(t.dataset.oid); const box = document.getElementById("det-" + t.dataset.oid); if (!o || !box) return;
+      if (!box.hidden) { box.hidden = true; t.textContent = "Lire l'offre"; return; }
+      box.hidden = false; t.textContent = "Fermer"; box.innerHTML = `<p class="aide">Lecture de l'offre...</p>`;
+      try {
+        const d = await api(`/api/offres/?detail=${encodeURIComponent(o.url)}&titre=${encodeURIComponent(o.titre || "")}`);
+        const infos = [d.salaire && `Salaire : ${d.salaire}`, d.contrat && `Contrat : ${d.contrat}`, d.echeance && `Date limite : ${dateCourte(d.echeance)}`].filter(Boolean);
+        box.innerHTML = `<div class="guide ${d.courriel ? "" : "site"}"><b>${d.courriel ? `Candidature par courriel : ${E(d.courriel)}` : "Candidature sur le site de l'employeur"}</b>${infos.length ? `<br>${infos.map(E).join(" | ")}` : ""}</div>
+          <div class="corps-offre">${E(d.description || "Texte non disponible : ouvre le site.")}</div>`;
+      } catch (err) { box.innerHTML = `<p class="vide">${E(err.message)}</p>`; }
+      return;
+    }
     case "masquer-offre": (etat.d["offres-masquees"] = etat.d["offres-masquees"] || []).push(t.dataset.oid); sauver("offres-masquees"); return listerOffres();
     case "retirer-offre": etat.d["offres-sauvees"] = (etat.d["offres-sauvees"] || []).filter((x) => x.id !== t.dataset.oid); sauver("offres-sauvees"); return listerOffres();
     case "offre-vers-cand": {
       const o = offreParId(t.dataset.oid); if (!o) return;
       const c = { id: uid(), entreprise: o.entreprise || "", poste: o.titre, ville: o.lieu || "", type: o.profil === "temporaire" ? "temporaire" : "offre", cv: o.profil === "temporaire" ? "barman" : "carriere", lien: o.url, statut: "a_preparer", priorite: 2, salaire: o.salaire || "", historique: [] };
-      noter(c, `Ajoutée depuis les offres (${o.source || "ajout manuel"})`); etat.d.candidatures.unshift(c); sauver("candidatures"); toast("Ajoutée aux candidatures. Complète le courriel du recruteur dans la fiche.");
-      return listerOffres();
+      noter(c, `Ajoutée depuis les offres (${o.source || "ajout manuel"})`); etat.d.candidatures.unshift(c); sauver("candidatures");
+      listerOffres();
+      return ficheCandidature(c);
     }
     case "ajouter-offre": return ouvrirModale("Ajouter une offre", `<div class="grille-form">
         <label class="champ large"><span>Lien de l'offre</span><input name="url" type="url" required></label><label class="champ"><span>Titre du poste</span><input name="titre"></label>

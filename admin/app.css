@@ -244,3 +244,26 @@ table.tab { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .epingle:hover, .epingle:focus-visible { transform: scale(1.12); outline: none; }
 .maplibregl-popup-content { font-family: inherit; font-size: .86rem; line-height: 1.4; padding: 12px 14px; border-radius: 8px; }
 @media (max-width: 640px) { .carte-geo { height: 320px; } }
+
+/* Postuler : guide, texte de l'offre, mode d'emploi */
+.guide { background: var(--info-fond); border: 1px solid rgba(61,95,148,.25); color: var(--texte); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; font-size: .9rem; line-height: 1.45; }
+.guide b { color: var(--info); }
+.guide ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 3px; }
+.guide.fait { background: var(--ok-fond); border-color: rgba(47,122,79,.25); }
+.guide.fait b { color: var(--ok); }
+.guide.site { background: var(--att-fond); border-color: rgba(154,106,12,.25); }
+.guide.site b { color: var(--att); }
+.texte-offre { margin-top: 16px; border: 1px solid var(--trait); border-radius: 8px; background: var(--carte-2); }
+.texte-offre summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: .9rem; }
+.corps-offre { white-space: pre-wrap; font-size: .88rem; line-height: 1.5; color: var(--texte); padding: 4px 14px 14px; max-height: 360px; overflow: auto; overflow-wrap: anywhere; }
+.detail-offre { grid-column: 1 / -1; margin-top: 6px; border-top: 1px solid var(--trait); padding-top: 10px; }
+.detail-offre .guide { margin-bottom: 8px; }
+.detail-offre .corps-offre { padding: 0; max-height: 420px; }
+.mode-emploi { margin-bottom: 18px; }
+.mode-emploi summary { cursor: pointer; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; list-style: none; }
+.mode-emploi summary::-webkit-details-marker { display: none; }
+.mode-emploi summary h2 { margin: 0; font: 700 1.25rem/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.mode-emploi summary::after { content: "+"; margin-left: auto; font-weight: 700; color: var(--doux); }
+.mode-emploi[open] summary::after { content: "-"; }
+.etapes { margin: 14px 0 0; padding-left: 22px; display: grid; gap: 8px; font-size: .92rem; line-height: 1.5; }
+.etapes a { color: var(--cedre); }
