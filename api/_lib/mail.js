@@ -9,9 +9,34 @@ import { cmd, lireJSON } from "./kv.js";
 import { REGLAGES } from "./defauts.js";
 
 const UTILISATEUR = process.env.MAIL_USER || "massivemedias@gmail.com";
-const MOT_DE_PASSE = (process.env.MAIL_APP_PASSWORD || "").replace(/\s+/g, "");
+// Un mot de passe d'application Gmail fait 16 lettres. Si la valeur collée est plus longue
+// (collée plusieurs fois, ou avec du texte autour), on essaie chaque bloc de 16 lettres.
+const BRUT = (process.env.MAIL_APP_PASSWORD || "").replace(/\s+/g, "");
+const CANDIDATS = [...new Set([
+  ...(BRUT.length > 16 ? (BRUT.match(/[a-z]{16}/gi) || []) : []),
+  BRUT,
+])].filter(Boolean);
+let MOT_DE_PASSE = CANDIDATS[0] || "";
+let motVerifie = CANDIDATS.length <= 1;
 export const courrielPret = () => Boolean(MOT_DE_PASSE);
 const INFO = "info@sylvainbrochu.ca";
+
+async function connecter() {
+  const essais = motVerifie ? [MOT_DE_PASSE] : CANDIDATS;
+  let derniere;
+  for (const pass of essais) {
+    const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user: UTILISATEUR, pass }, logger: false });
+    try {
+      await client.connect();
+      MOT_DE_PASSE = pass; motVerifie = true;
+      return client;
+    } catch (e) {
+      derniere = e;
+      if (!e.authenticationFailed) throw e;
+    }
+  }
+  throw derniere;
+}
 
 export const FILTRES = {
   recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu)) -from:${INFO} -in:drafts -in:spam -in:trash`,
@@ -25,8 +50,7 @@ async function reglages() {
 
 export async function avecImap(fn) {
   if (!MOT_DE_PASSE) throw new Error("COURRIEL_ABSENT");
-  const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user: UTILISATEUR, pass: MOT_DE_PASSE }, logger: false });
-  await client.connect();
+  const client = await connecter();
   try { return await fn(client); } finally { try { await client.logout(); } catch { /* déjà fermé */ } }
 }
 
@@ -162,6 +186,7 @@ function transport() {
 }
 
 export async function envoyer(m) {
+  if (!motVerifie) await avecImap(async () => null);
   const msg = await composer(m);
   if (!msg.to.length) throw new Error("Aucun destinataire");
   const info = await transport().sendMail(msg);
@@ -274,6 +299,6 @@ export async function etat() {
   } catch (e) {
     const detail = [e.responseText, e.serverResponseCode, e.code].filter(Boolean).join(" | ");
     const raison = e.authenticationFailed ? `Gmail refuse le mot de passe d'application (${detail || e.message})` : (detail ? `${e.message} : ${detail}` : e.message);
-    return { pret: false, raison, boite: UTILISATEUR, longueurMotDePasse: MOT_DE_PASSE.length };
+    return { pret: false, raison, boite: UTILISATEUR, longueurMotDePasse: BRUT.length, essais: CANDIDATS.length };
   }
 }
