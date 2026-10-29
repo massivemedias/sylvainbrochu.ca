@@ -49,7 +49,7 @@ async function connecter() {
 }
 
 export const FILTRES = {
-  recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu) OR subject:"Sylvain Brochu") -from:${INFO} -from:${UTILISATEUR} -in:drafts -in:spam -in:trash`,
+  recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu) OR subject:"Sylvain Brochu") -from:${INFO} -from:${UTILISATEUR} -label:sylvain-alertes -in:drafts -in:spam -in:trash`,
   envoyes: `from:${INFO} -in:drafts -in:trash`,
   brouillons: `from:${INFO}`,
 };
@@ -103,6 +103,35 @@ export async function liste(dossier, q = "", max = 60) {
     const filtre = FILTRES[dossier] || FILTRES.recus;
     const gmraw = q ? `${filtre} ${q}` : filtre;
     return chercher(client, dossier === "brouillons" ? c.brouillons : c.tous, gmraw, max);
+  });
+}
+
+// Alertes d'emploi des grands sites (reçues sur info@) : lues pour l'onglet Offres.
+// Celles qui contiennent des offres reçoivent le libellé sylvain-alertes et ne s'affichent plus dans Reçus.
+const SITES_ALERTE = ["indeed.com", "linkedin.com", "glassdoor.com", "glassdoor.ca", "jobboom.com", "jobillico.com", "talent.com", "eluta.ca", "jobbank.gc.ca", "guichetemplois.gc.ca", "monster.ca", "workopolis.com", "ziprecruiter.com", "simplyhired.com", "careerjet.ca"];
+export async function alertesEmploi(analyser, { jours = 21, max = 30 } = {}) {
+  return avecImap(async (client) => {
+    const c = await chemins(client);
+    const gmraw = `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR label:sylvain-alertes) from:(${SITES_ALERTE.join(" OR ")}) newer_than:${jours}d -in:spam -in:trash`;
+    const lock = await client.getMailboxLock(c.tous);
+    try {
+      const uids = ((await client.search({ gmraw }, { uid: true })) || []).sort((a, b) => b - a).slice(0, max);
+      if (!uids.length) return { offres: [], lus: 0 };
+      const bruts = [];
+      for await (const m of client.fetch(uids, { uid: true, source: true, internalDate: true, labels: true }, { uid: true })) bruts.push(m);
+      const offres = []; const aRanger = [];
+      for (const m of bruts) {
+        let p; try { p = await simpleParser(m.source); } catch { continue; }
+        const msg = { uid: m.uid, de: (p.from?.value?.[0]?.address || "").toLowerCase(), sujet: p.subject || "", date: (m.internalDate || p.date || new Date()).toISOString(), html: p.html || p.textAsHtml || "" };
+        const l = analyser(msg) || [];
+        if (l.length) { offres.push(...l); if (!(m.labels && m.labels.has("sylvain-alertes"))) aRanger.push(m.uid); }
+      }
+      if (aRanger.length) {
+        try { await client.messageFlagsAdd(aRanger, ["sylvain-alertes"], { uid: true, useLabels: true }); }
+        catch (e) { console.error("Libellé sylvain-alertes :", e.message); }
+      }
+      return { offres, lus: uids.length };
+    } finally { lock.release(); }
   });
 }
 
