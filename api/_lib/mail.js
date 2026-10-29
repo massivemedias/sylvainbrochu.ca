@@ -50,7 +50,7 @@ async function connecter() {
 
 export const FILTRES = {
   recus: `(to:${INFO} OR cc:${INFO} OR deliveredto:${INFO} OR label:sylvain-emplois OR (from:submissions@formsubmit.co sylvainbrochu) OR subject:"Sylvain Brochu") -from:${INFO} -from:${UTILISATEUR} -label:sylvain-alertes -in:drafts -in:spam -in:trash`,
-  envoyes: `from:${INFO} -in:drafts -in:trash`,
+  envoyes: `from:${INFO} -in:drafts -in:trash -subject:"attend ma réponse" -subject:"attendent ma réponse"`,
   brouillons: `from:${INFO}`,
 };
 
@@ -346,6 +346,77 @@ export async function recreerBrouillons(candidatures, remplacer = false) {
     } finally { lock.release(); }
   });
   return out;
+}
+
+// ---------- Courriels qui attendent ma réponse ----------
+// Important : l'expéditeur est lié à une candidature (même adresse ou même domaine d'entreprise),
+// ou info@ lui a déjà écrit (c'est une réponse), ou c'est un message du formulaire du site.
+// Répondu : info@ a écrit à cette adresse après la réception. Les accusés de réception automatiques sont ignorés.
+const AUTO = /(no-?reply|do-?not-?reply|ne-?pas-?repondre|nepasrepondre|notification|mailer-daemon|postmaster|bounce|newsletter|jobalert|alerts?@|calendar)/i;
+const ACCUSE = /(accus[ée] de r[ée]ception|nous avons (bien )?re[çc]u|we (have )?received your|thank you for (your )?appl|thanks for (your )?appl|merci (pour|de) (votre|ta) (candidature|int[ée]r[êe]t)|confirmation de (votre )?candidature|application (received|confirmation)|candidature (bien )?re[çc]ue|out of office|absence du bureau|r[ée]ponse automatique|automatic reply)/i;
+const WEBMAIL = /^(gmail|hotmail|outlook|live|yahoo|icloud|me|videotron|bell|sympatico|msn|aol|proton|protonmail)\./i;
+export async function aRepondre(candidatures = [], options = {}) {
+  return avecImap((client) => aRepondreAvec(client, candidatures, options));
+}
+export async function aRepondreAvec(client, candidatures = [], { jours = 7 } = {}) {
+  {
+    const c = await chemins(client);
+    const lock = await client.getMailboxLock(c.tous);
+    try {
+      const uids = ((await client.search({ gmraw: `${FILTRES.recus} newer_than:${jours}d` }, { uid: true })) || []).sort((a, b) => b - a).slice(0, 40);
+      if (!uids.length) return [];
+      const msgs = [];
+      for await (const m of client.fetch(uids, { uid: true, envelope: true, internalDate: true, flags: true }, { uid: true })) msgs.push(m);
+      msgs.sort((a, b) => b.internalDate - a.internalDate);
+      const cands = (candidatures || []).filter((x) => x && /@/.test(x.courriel || ""));
+      const trouver = async (gmraw) => ((await client.search({ gmraw }, { uid: true })) || []).length > 0;
+      const out = []; const vus = new Set();
+      for (const m of msgs) {
+        const de = (m.envelope?.from || [])[0] || {};
+        const deAd = String(de.address || "").toLowerCase();
+        const formulaire = deAd === "submissions@formsubmit.co";
+        const corr = formulaire ? (m.envelope?.replyTo || [])[0] || {} : de;
+        const ad = String(corr.address || "").toLowerCase();
+        const sujet = m.envelope?.subject || "(sans objet)";
+        if (!ad || ad === INFO || ad === UTILISATEUR.toLowerCase() || AUTO.test(ad) || ACCUSE.test(sujet)) continue;
+        if (vus.has(ad)) continue; // seul le dernier message de chaque personne compte
+        vus.add(ad);
+        const dom = ad.split("@")[1] || "";
+        const cand = cands.find((x) => x.courriel.trim().toLowerCase() === ad) || (dom && !WEBMAIL.test(dom) ? cands.find((x) => x.courriel.trim().toLowerCase().endsWith("@" + dom)) : null);
+        const recu = m.internalDate instanceof Date ? m.internalDate : new Date(m.internalDate || Date.now());
+        if (await trouver(`from:${INFO} to:${ad} after:${Math.floor(recu.getTime() / 1000)} -in:drafts`)) continue; // déjà répondu
+        const important = Boolean(cand) || formulaire || (await trouver(`from:${INFO} to:${ad} -in:drafts`)) || (dom && !WEBMAIL.test(dom) && (await trouver(`from:${INFO} to:${dom} -in:drafts`)));
+        if (!important) continue;
+        out.push({ uid: m.uid, idMessage: m.envelope?.messageId || String(m.uid), date: recu.toISOString(), sujet, de: { nom: corr.name || de.name || "", courriel: ad }, entreprise: cand ? cand.entreprise : "", candidatureId: cand ? cand.id : "", formulaire, lu: m.flags ? m.flags.has("\\Seen") : true });
+      }
+      return out;
+    } finally { lock.release(); }
+  }
+}
+
+// Courriel de rappel à Sylvain (et aux adresses choisies dans Réglages), avec un lien direct vers chaque courriel.
+export function texteRappel(liste, maintenant = Date.now()) {
+  const qui = (x) => (x.de.nom ? `${x.de.nom}${x.entreprise ? ` (${x.entreprise.split(" (")[0]})` : ""}` : x.entreprise ? x.entreprise.split(" (")[0] : x.de.courriel);
+  const age = (iso) => { const h = Math.max(1, Math.round((maintenant - Date.parse(iso)) / 3600e3)); return h < 24 ? `${h} h` : `${Math.round(h / 24)} jour${Math.round(h / 24) > 1 ? "s" : ""}`; };
+  const lien = (x) => `https://www.sylvainbrochu.ca/admin/#courriels/recus:${x.uid}`;
+  const sujet = liste.length === 1 ? `Rappel : ${qui(liste[0])} attend ma réponse` : `Rappel : ${liste.length} courriels attendent ma réponse`;
+  const intro = liste.length === 1 ? "Ce courriel attend ma réponse :" : "Ces courriels attendent ma réponse :";
+  const lignes = liste.map((x) => `- ${qui(x)}, « ${x.sujet} », reçu il y a ${age(x.date)}${x.formulaire ? " (formulaire de mon site)" : ""}\n  Lire et répondre : ${lien(x)}`);
+  const text = `${intro}\n\n${lignes.join("\n\n")}\n\nRépondre vite fait bonne impression. Je réponds depuis mon espace : la réponse part de info@sylvainbrochu.ca.\n\n--\nRappel automatique de mon espace sylvainbrochu.ca/admin (réglable dans Réglages).`;
+  const html = `<div style="font:15px/1.5 -apple-system,Segoe UI,Arial,sans-serif;color:#1d1a20;max-width:560px">
+<p style="margin:0 0 14px">${echapper(intro)}</p>
+${liste.map((x) => `<div style="border:1px solid #e3ddd3;border-left:4px solid #c8a26b;border-radius:8px;padding:12px 14px;margin:0 0 10px">
+<b>${echapper(qui(x))}</b><br><span style="color:#6b635b">« ${echapper(x.sujet)} », reçu il y a ${age(x.date)}${x.formulaire ? " (formulaire de mon site)" : ""}</span><br>
+<a href="${lien(x)}" style="display:inline-block;margin-top:10px;background:#c8a26b;color:#17151a;text-decoration:none;font-weight:600;padding:9px 16px;border-radius:6px">Lire et répondre</a></div>`).join("")}
+<p style="margin:14px 0 0;color:#6b635b">Répondre vite fait bonne impression. Je réponds depuis mon espace : la réponse part de info@sylvainbrochu.ca.</p>
+<p style="margin:18px 0 0;font-size:12px;color:#9a9187">Rappel automatique de mon espace sylvainbrochu.ca/admin (réglable dans Réglages).</p></div>`;
+  return { sujet, text, html };
+}
+export async function envoyerRappel(destinataires, liste) {
+  if (!motVerifie) await avecImap(async () => null);
+  const { sujet, text, html } = texteRappel(liste);
+  const info = await transport().sendMail({ from: { name: "Rappel sylvainbrochu.ca", address: INFO }, to: destinataires, subject: sujet, text, html, headers: { "X-SB-Rappel": "1" } });
+  return { idMessage: info.messageId, acceptes: info.accepted };
 }
 
 export async function etat() {

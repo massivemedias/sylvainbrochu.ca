@@ -28,6 +28,7 @@ const etat = {
   boite: { dossier: "recus", listes: {}, ouvert: null, q: "" },
   cvOnglet: "carriere", filtre: "actifs", rech: "", profilOffres: "tous", rechOffres: "", journal: null,
   offresMaj: "", // "" | "en-cours" | "erreur" : mise à jour des offres en arrière-plan
+  aRepondre: [], aRepondreT: 0, // courriels importants qui attendent ma réponse (api/rappels.js)
 };
 
 // Offres déjà vues dans ce navigateur : celles qui n'y sont pas sont marquées « Nouvelle » pendant toute la visite.
@@ -94,8 +95,14 @@ function relance(c) {
 const nomCourt = (c) => String(c.entreprise || "").split(" (")[0];
 const methode = (c) => (c.courriel ? "courriel" : c.formulaire || c.lien ? "site" : "");
 // Ce que j'ai à faire pour chaque candidature, avec un seul bouton.
+const quiCourriel = (x) => (x.de.nom ? `${x.de.nom}${x.entreprise ? ` (${x.entreprise.split(" (")[0]})` : ""}` : x.entreprise ? x.entreprise.split(" (")[0] : x.de.courriel);
+const depuis = (iso) => { const h = Math.floor((Date.now() - Date.parse(iso)) / 3600e3); return h < 1 ? "il y a moins d'une heure" : h < 24 ? `il y a ${h} h` : `il y a ${Math.floor(h / 24)} jour${Math.floor(h / 24) > 1 ? "s" : ""}`; };
 function aFaire() {
   const out = []; const auj = jour();
+  (etat.aRepondre || []).forEach((x) => {
+    const c = x.candidatureId ? (etat.d.candidatures || []).find((y) => y.id === x.candidatureId) : null;
+    out.push({ type: "repondre", c, x, tri: x.date, texte: `Répondre à ${quiCourriel(x)}`, detail: `« ${x.sujet} », reçu ${depuis(x.date)}${x.formulaire ? " par le formulaire de mon site" : ""}. Répondre vite fait bonne impression.`, bouton: "Lire et répondre" });
+  });
   (etat.d.candidatures || []).forEach((c) => {
     const r = relance(c); const ent = nomCourt(c);
     if (c.entrevueLe && c.entrevueLe.slice(0, 10) >= auj) out.push({ type: "entrevue", c, tri: c.entrevueLe, texte: `Mon entrevue chez ${ent}`, detail: `Le ${dateCourte(c.entrevueLe)}${c.entrevueLe.length > 10 ? " à " + c.entrevueLe.slice(11, 16) : ""}. Je relis l'offre et ma lettre avant.`, bouton: "Ouvrir" });
@@ -107,7 +114,7 @@ function aFaire() {
     }
     if (c.statut === "brouillon") out.push({ type: "brouillon", c, tri: "9" + (c.priorite || 3), texte: `Envoyer ma candidature chez ${ent}`, detail: "Mon courriel est déjà prêt, mon CV est joint. Je le relis et je l'envoie.", bouton: "Relire et envoyer" });
   });
-  const ordre = { entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
+  const ordre = { repondre: -1, entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
   return out.sort((a, b) => ordre[a.type] - ordre[b.type] || String(a.tri).localeCompare(String(b.tri)));
 }
 const posteCourt = (p) => { const s = String(p || "").replace(/\s+/g, " ").trim(); return s.length > 70 ? s.slice(0, 68).replace(/\s+\S*$/, "") + "..." : s; };
@@ -141,6 +148,7 @@ async function demarrer() {
       if (enCours) return;
       dernierRafraichissement = Date.now();
       try { const n = await api("/api/donnees/?cle=tout"); etat.d = n.donnees; if (["tableau", "candidatures"].includes(etat.page)) rendrePage(); } catch { /* hors ligne */ }
+      if (etat.mail?.pret && Date.now() - etat.aRepondreT > 5 * 60e3) chargerARepondre();
     };
     document.addEventListener("visibilitychange", rafraichir);
     window.addEventListener("focus", rafraichir);
@@ -149,6 +157,7 @@ async function demarrer() {
     const etatBoite = () => api("/api/courriels/?action=etat").then((m) => (m.pret ? m : new Promise((ok) => setTimeout(ok, 1500)).then(() => api("/api/courriels/?action=etat"))));
     etatBoite().then((m) => {
       etat.mail = m;
+      if (m.pret) chargerARepondre();
       if (m.import && m.import.crees.length) toast(`${m.import.crees.length} brouillon${m.import.crees.length > 1 ? "s" : ""} de candidature recréé${m.import.crees.length > 1 ? "s" : ""} dans ${m.boite}.`);
       if (["courriels", "tableau"].includes(etat.page)) rendrePage();
     }).catch(() => { etat.mail = { pret: false, raison: "Erreur" }; });
@@ -215,7 +224,9 @@ function majCompteurs() {
   const eo = $('[data-c="offres"]'); if (eo) { eo.hidden = !no; eo.textContent = no; eo.title = `${no} nouvelle${no > 1 ? "s" : ""} offre${no > 1 ? "s" : ""}`; }
 }
 function allerA() {
-  const p = (location.hash || "#tableau").slice(1).split("/")[0];
+  const [p, suite] = (location.hash || "#tableau").slice(1).split("/");
+  const lien = p === "courriels" && /^(recus|envoyes|brouillons):\d+$/.test(suite || "") ? suite.split(":") : null;
+  if (lien) { etat.boite.dossier = lien[0]; etat.boite.q = ""; etat.boite.ouvert = { dossier: lien[0], uid: Number(lien[1]) }; history.replaceState(null, "", "#courriels"); }
   etat.page = PAGES.some(([id]) => id === p) ? p : "tableau";
   $$(".onglets a").forEach((a) => a.setAttribute("aria-current", a.dataset.p === etat.page ? "page" : "false"));
   rendrePage();
@@ -241,6 +252,18 @@ async function chargerBoite(dossier, force = false) {
   return r.messages;
 }
 // Les offres gardées s'affichent tout de suite ; si elles ont plus d'une heure, une mise à jour part en arrière-plan.
+// Courriels importants qui attendent ma réponse : en tête de l'accueil (et rappel par courriel, voir api/rappels.js).
+async function chargerARepondre() {
+  etat.aRepondreT = Date.now();
+  try {
+    const r = await api("/api/rappels/?action=liste");
+    const avant = JSON.stringify((etat.aRepondre || []).map((x) => x.uid));
+    etat.aRepondre = r.courriels || [];
+    majCompteurs();
+    const ecrit = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (avant !== JSON.stringify(etat.aRepondre.map((x) => x.uid)) && !ecrit && $("#modale").hidden && ["tableau", "candidatures"].includes(etat.page)) rendrePage();
+  } catch { /* on réessaiera au prochain rafraîchissement */ }
+}
 async function chargerOffres(force = false) {
   if (!force && etat.offres) return etat.offres;
   if (force) { await mettreAJourOffres(true); return etat.offres; }
@@ -393,6 +416,7 @@ function commentPostuler() {
 }
 function boutonTache(t, grand = false) {
   const g = grand ? " grand" : " petit";
+  if (t.type === "repondre") return `<button class="btn laiton${g}" data-act="ouvrir-courriel" data-uid="${t.x.uid}">${t.bouton}</button>`;
   if (t.type === "relance") return `<button class="btn laiton${g}" data-act="relancer" data-id="${t.c.id}">${t.bouton}</button>`;
   if (t.type === "reponse") return `<button class="btn laiton${g}" data-act="lire-reponse" data-id="${t.c.id}">${t.bouton}</button>`;
   if (t.type === "brouillon") return `<button class="btn laiton${g}" data-act="voir-brouillon" data-id="${t.c.id}">${t.bouton}</button>`;
@@ -405,7 +429,7 @@ function boutonTache(t, grand = false) {
 // ======================================================================
 function pCandidatures() {
   const toutes = etat.d.candidatures || [];
-  const parC = new Map(); aFaire().forEach((t) => { if (!parC.has(t.c.id)) parC.set(t.c.id, t); });
+  const parC = new Map(); aFaire().forEach((t) => { if (t.c && !parC.has(t.c.id)) parC.set(t.c.id, t); });
   const compte = (f) => toutes.filter(f).length;
   const FILTRES = [
     ["actifs", "En cours", (c) => !["refus", "ferme"].includes(c.statut)],
@@ -417,12 +441,12 @@ function pCandidatures() {
     ["tout", "Tout", () => true]];
   const f = FILTRES.find((x) => x[0] === etat.filtre) || FILTRES[0];
   const q = etat.rech.toLowerCase();
-  const ordre = { entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
+  const ordre = { repondre: -1, entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
   const liste = toutes.filter(f[2]).filter((c) => !q || `${c.entreprise} ${c.poste} ${c.ville} ${c.courriel}`.toLowerCase().includes(q))
     .sort((a, b) => (parC.has(a.id) ? ordre[parC.get(a.id).type] : 9) - (parC.has(b.id) ? ordre[parC.get(b.id).type] : 9) || (a.priorite || 3) - (b.priorite || 3) || String(b.envoyeLe || "").localeCompare(String(a.envoyeLe || "")));
   const suite = (c) => {
     const t = parC.get(c.id);
-    if (t) return `<div class="suite"><span>${E(t.type === "postuler" ? (methode(c) === "courriel" ? "Postuler par courriel" : methode(c) === "site" ? "Postuler sur le site" : "Postuler") : t.type === "brouillon" ? "Mon courriel est prêt à envoyer" : t.type === "relance" ? "Relancer, pas de réponse" : t.type === "reponse" ? "Lire la réponse" : "Entrevue " + dateCourte(c.entrevueLe))}</span>${boutonTache(t)}</div>`;
+    if (t) return `<div class="suite"><span>${E(t.type === "repondre" ? "Répondre au courriel reçu" : t.type === "postuler" ? (methode(c) === "courriel" ? "Postuler par courriel" : methode(c) === "site" ? "Postuler sur le site" : "Postuler") : t.type === "brouillon" ? "Mon courriel est prêt à envoyer" : t.type === "relance" ? "Relancer, pas de réponse" : t.type === "reponse" ? "Lire la réponse" : "Entrevue " + dateCourte(c.entrevueLe))}</span>${boutonTache(t)}</div>`;
     const r = relance(c);
     if (r) return `<span class="aide">J'attends une réponse. Relance le ${dateCourte(r.due)}.</span>`;
     if (c.statut === "offre") return `<span class="aide">Offre reçue.</span>`;
@@ -796,6 +820,7 @@ function ouvrirComposeur(o = {}) {
       if (!c) return;
       if (envoye) {
         if (o.relance) { c.statut = "relance"; c.relanceFaiteLe = jour(); noter(c, "Relance envoyée depuis l'admin"); }
+        if (o.enReponseA && c.reponseLe) c.reponseTraitee = true;
         else { if (!c.envoyeLe) c.envoyeLe = jour(); if (["a_preparer", "brouillon"].includes(c.statut)) c.statut = "envoye"; noter(c, "Courriel envoyé depuis l'admin"); }
       } else { if (c.statut === "a_preparer") c.statut = "brouillon"; noter(c, o.relance ? "Brouillon de relance préparé" : "Brouillon préparé"); }
       sauver("candidatures");
@@ -810,7 +835,7 @@ function ouvrirComposeur(o = {}) {
       if (!m.a.trim()) return toast("J'indique à qui envoyer (champ « À »).", true);
       if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.classList.add("laiton"); b.textContent = `Oui, envoyer à ${m.a.split(/[,;]/)[0].trim()}`; return; }
       b.disabled = true; b.textContent = "Envoi...";
-      try { await api("/api/courriels/?action=envoyer", { method: "POST", body: m }); apres(true); fermerModale(); toast(c ? `Ma candidature est envoyée à ${nomCourt(c)}.` : "Mon courriel est envoyé."); delete etat.boite.listes.envoyes; rendrePage(); }
+      try { await api("/api/courriels/?action=envoyer", { method: "POST", body: m }); apres(true); { const dest = m.a.toLowerCase(); etat.aRepondre = (etat.aRepondre || []).filter((x) => !dest.includes(x.de.courriel)); } fermerModale(); toast(c ? `Ma candidature est envoyée à ${nomCourt(c)}.` : "Mon courriel est envoyé."); delete etat.boite.listes.envoyes; rendrePage(); }
       catch (err) { b.disabled = false; b.textContent = "Réessayer l'envoi"; delete b.dataset.ok; toast(err.message, true); }
     };
   });
@@ -883,6 +908,8 @@ async function ouvrirCourriel(dossier, uidMsg) {
       f.srcdoc = `<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font:14px/1.5 -apple-system,Segoe UI,Arial,sans-serif;color:#222;margin:14px;word-wrap:break-word}img{max-width:100%;height:auto}</style>${m.html}`;
       f.onload = () => { try { f.style.height = Math.min(1600, f.contentDocument.body.scrollHeight + 40) + "px"; } catch { /* */ } };
     }
+    const attente = dossier === "recus" && (etat.aRepondre || []).find((x) => x.uid === m.uid);
+    if (attente) lec.querySelector(".meta").insertAdjacentHTML("afterend", `<div class="bandeau-info attente"><span><b>Ce courriel attend ma réponse</b> depuis ${E(depuis(attente.date).replace(/^il y a /, ""))}. Je clique « Répondre ».</span></div>`);
     lec._message = m; lec._cand = c;
   } catch (e) { lec.innerHTML = `<p class="vide">${E(e.message)}</p>`; }
 }
@@ -1160,7 +1187,7 @@ function pModeles() {
 // ======================================================================
 function pReglages() {
   const r = etat.d.reglages;
-  $("#page").innerHTML = entete("Réglages", "Qui a accès, délai de relance, ma signature et l'état des connexions.") + `
+  $("#page").innerHTML = entete("Réglages", "Qui a accès, mes rappels, délai de relance, ma signature et l'état des connexions.") + `
   <div class="grille g2">
     <section class="carte"><h2>Qui a accès à mon espace</h2><label class="champ"><span>Adresses Google autorisées (une par ligne)</span><textarea id="r-acces" rows="5">${E((r.acces || []).join("\n"))}</textarea></label>
       <p class="aide">Chaque adresse doit être un compte Google. Pour info@sylvainbrochu.ca, il faut créer un compte Google avec cette adresse (accounts.google.com, « Utiliser mon adresse e-mail actuelle »).</p></section>
@@ -1169,6 +1196,14 @@ function pReglages() {
       <label class="champ"><span>Relance après (jours)</span><input id="r-rel" type="number" min="2" max="30" value="${E(r.relanceJours)}"></label>
       <label class="champ large"><span>Copie cachée par défaut (Cci)</span><input id="r-cci" value="${E(r.cci)}"></label>
       <label class="champ large"><span>Signature</span><textarea id="r-sig" rows="4">${E(r.signature)}</textarea></label></div></section>
+    <section class="carte"><h2>Mes rappels</h2>
+      <p class="aide">Quand un employeur (ou un message du formulaire de mon site) attend ma réponse, je reçois un rappel par courriel avec un lien pour répondre. Jamais la nuit (21 h à 8 h), au plus 2 rappels par courriel.</p>
+      <div class="grille-form" style="margin-top:10px">
+        <label class="champ"><span>Rappels</span><select id="r-rap"><option value="1" ${r.rappels !== false ? "selected" : ""}>Activés</option><option value="0" ${r.rappels === false ? "selected" : ""}>Désactivés</option></select></label>
+        <label class="champ"><span>Rappel après (heures)</span><input id="r-raph" type="number" min="1" max="48" value="${E(r.rappelHeures || 3)}"></label>
+        <label class="champ large"><span>Envoyer le rappel à (séparer par des virgules)</span><input id="r-rapa" value="${E(r.rappelA || "sylvain@cartel.ca")}"></label>
+      </div>
+      <p class="aide" style="margin-top:8px">${(etat.aRepondre || []).length ? `En ce moment : ${(etat.aRepondre || []).length} courriel${(etat.aRepondre || []).length > 1 ? "s" : ""} attend${(etat.aRepondre || []).length > 1 ? "ent" : ""} ma réponse.` : "En ce moment : aucun courriel n'attend ma réponse."}</p></section>
     <section class="carte"><h2>Connexions</h2><ul class="liste">
       <li><div class="t"><b>Stockage (Redis)</b><small>Candidatures, CV, statistiques</small></div><span class="ok-txt">Branché</span></li>
       <li><div class="t"><b>Boîte Gmail ${E(etat.mail?.boite || "")}</b><small>Lecture et envoi pour info@sylvainbrochu.ca</small></div>${etat.mail ? (etat.mail.pret ? `<span class="ok-txt">Branchée</span>` : `<span class="ko-txt">À configurer</span>`) : `<span class="aide">Vérification...</span>`}</li></ul>
@@ -1271,6 +1306,10 @@ document.addEventListener("click", async (e) => {
       if (etat.page === "courriels") return pCourriels(); location.hash = "#courriels"; return;
     }
     case "voir-brouillon": return cand && voirBrouillon(cand);
+    case "ouvrir-courriel": {
+      etat.boite.dossier = "recus"; etat.boite.q = ""; etat.boite.ouvert = { dossier: "recus", uid: Number(t.dataset.uid) };
+      if (etat.page === "courriels") return pCourriels(); location.hash = "#courriels"; return;
+    }
     case "lire-offre": {
       const o = offreParId(t.dataset.oid); const box = document.getElementById("det-" + t.dataset.oid); if (!o || !box) return;
       if (!box.hidden) { box.hidden = true; t.textContent = "Lire l'offre"; return; }
@@ -1311,6 +1350,8 @@ document.addEventListener("click", async (e) => {
       r.acces = $("#r-acces").value.split(/\n|,/).map((x) => x.trim().toLowerCase()).filter(Boolean);
       r.expediteurNom = $("#r-nom").value.trim() || "Sylvain Brochu"; r.relanceJours = Number($("#r-rel").value) || 7;
       r.cci = $("#r-cci").value.trim(); r.signature = $("#r-sig").value;
+      r.rappels = $("#r-rap").value === "1"; r.rappelHeures = Math.min(48, Math.max(1, Number($("#r-raph").value) || 3));
+      r.rappelA = $("#r-rapa").value.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => /@/.test(x)).join(", ") || "sylvain@cartel.ca";
       await sauver("reglages"); toast("Réglages enregistrés."); return;
     }
     case "exporter": {

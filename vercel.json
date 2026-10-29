@@ -23,12 +23,19 @@
     },
     "api/offres.js": {
       "maxDuration": 45
+    },
+    "api/rappels.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/offres/",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/rappels/",
+      "schedule": "0 14 * * *"
     }
   ],
   "headers": [

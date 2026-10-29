@@ -1,0 +1,14 @@
+# Toutes les 30 minutes : vérifie si un employeur attend une réponse de Sylvain depuis plus de quelques heures
+# et lui envoie un rappel par courriel (voir api/rappels.js). Rien n'est envoyé la nuit (21 h à 8 h, Montréal).
+name: Rappels courriels
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+jobs:
+  rappels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Vérifier les courriels en attente
+        run: curl -fsS --max-time 120 "https://www.sylvainbrochu.ca/api/rappels/"

@@ -362,3 +362,5 @@ select option { background: #fff; color: var(--texte); }
 .p-neuve { background: var(--laiton); color: var(--nuit); vertical-align: 2px; }
 .offre .actions { align-items: center; }
 .plus-loin .carte-geo { margin-top: 4px; }
+.bandeau-info.attente { background: var(--att-fond); border-color: rgba(154,106,12,.3); margin: 0; }
+.bandeau-info.attente b { color: var(--att); }

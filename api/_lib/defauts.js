@@ -13,6 +13,10 @@ export const REGLAGES = {
   expediteurNom: "Sylvain Brochu",
   expediteur: "info@sylvainbrochu.ca",
   signature: SIGNATURE,
+  // Rappel par courriel quand un employeur attend ma réponse (voir api/rappels.js)
+  rappels: true,
+  rappelHeures: 3,
+  rappelA: "sylvain@cartel.ca",
 };
 
 export const MODELES = [
