@@ -37,7 +37,7 @@
     btn.addEventListener('click', function () {
       var cat = btn.dataset.cat;
       filtres.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
-      document.querySelectorAll('.cartes .carte').forEach(function (c) {
+      document.querySelectorAll('.cartes .carte, .produits .produit').forEach(function (c) {
         c.hidden = !(cat === 'tous' || (c.dataset.cat || '').split(' ').indexOf(cat) !== -1);
       });
     });
@@ -97,8 +97,8 @@
         if (classe === 'rv') el.style.transitionDelay = (i % 6) * 70 + 'ms';
       });
     };
-    marquer('main h2, .enonce .phrase, .domaines li, .vises-liste li, .etapes li, .postes li, .carte, .valeurs article, .parcours .ligne, .colonnes li, .cv-carte, .projet .texte, .panneau', 'rv');
-    marquer('.projet .visuel, .bandeau .ouvrir, .grille figure, .recit .portrait', 'rv-img');
+    marquer('main h2, .enonce .phrase, .domaines li, .vises-liste li, .etapes li, .postes li, .carte, .valeurs article, .parcours .ligne, .colonnes li, .cv-carte, .projet .texte, .panneau, .produit, .ono-groupe-texte, .citation blockquote', 'rv');
+    marquer('.projet .visuel, .bandeau .ouvrir, .grille figure, .recit .portrait, .ono-groupe-images figure, .ono-mosaique figure, .ono-final figure, .ono-createur-photo', 'rv-img');
     var cibles = document.querySelectorAll('.rv, .rv-img');
     document.documentElement.classList.add('anim');
     var vue = new IntersectionObserver(function (entrees) {
@@ -128,6 +128,77 @@
     }
     window.addEventListener('scroll', maj, { passive: true });
     maj();
+  }
+
+  // Vidéos d'ambiance (Onomiko) : lecture muette quand elles sont visibles, contrôles si le mouvement est réduit
+  var videos = document.querySelectorAll('video[data-auto]');
+  var calme = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  videos.forEach(function (v) {
+    if (calme || !('IntersectionObserver' in window)) { v.controls = true; return; }
+    var obs = new IntersectionObserver(function (entrees) {
+      entrees.forEach(function (en) {
+        if (en.isIntersecting) { var p = v.play(); if (p && p.catch) p.catch(function () { v.controls = true; }); }
+        else v.pause();
+      });
+    }, { threshold: 0.35 });
+    obs.observe(v);
+  });
+
+  // Boutique Onomiko : sélection de pièces à réserver (gardée dans ce navigateur), envoyée par le formulaire
+  var dlgP = document.querySelector('dialog.panier');
+  if (dlgP) {
+    var CLE = 'onomiko-selection';
+    var lire = function () { try { return JSON.parse(localStorage.getItem(CLE)) || []; } catch (e) { return []; } };
+    var ecrire = function (s) { try { localStorage.setItem(CLE, JSON.stringify(s)); } catch (e) {} };
+    var selection = lire();
+    if (document.querySelector('[data-vider-panier]')) { selection = []; ecrire(selection); }
+    var bouton = document.querySelector('.panier-bouton');
+    var toast = document.querySelector('.panier-toast');
+    var liste = dlgP.querySelector('.panier-liste');
+    var champ = dlgP.querySelector('.panier-pieces');
+    var form = dlgP.querySelector('.panier-form');
+    var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    var majChamp = function () {
+      champ.value = selection.map(function (x) { return x.nom + (x.taille ? ' (' + dlgP.dataset.taille + ' : ' + x.taille + ')' : ''); }).join('\n');
+    };
+    var rendre = function () {
+      bouton.hidden = selection.length === 0;
+      bouton.querySelector('.nb').textContent = selection.length;
+      document.querySelectorAll('.reserver').forEach(function (b) {
+        b.classList.toggle('ajoute', selection.some(function (x) { return x.slug === b.dataset.slug; }));
+      });
+      if (!selection.length) { liste.innerHTML = '<li class="vide">' + esc(dlgP.dataset.vide) + '</li>'; form.hidden = true; majChamp(); return; }
+      form.hidden = false;
+      liste.innerHTML = selection.map(function (x, i) {
+        return '<li><span class="nom">' + esc(x.nom) + '</span><button type="button" class="retirer" data-i="' + i + '">' + esc(dlgP.dataset.retirer) + '</button>' +
+          '<label>' + esc(dlgP.dataset.taille) + '<input type="text" data-i="' + i + '" value="' + esc(x.taille || '') + '" placeholder="' + esc(dlgP.dataset.aide) + '"></label></li>';
+      }).join('');
+      majChamp();
+    };
+    var montrer = function (msg) {
+      if (!toast) return;
+      toast.textContent = msg; toast.classList.add('visible');
+      clearTimeout(montrer.t); montrer.t = setTimeout(function () { toast.classList.remove('visible'); }, 2200);
+    };
+    document.querySelectorAll('.reserver').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (!selection.some(function (x) { return x.slug === b.dataset.slug; })) {
+          selection.push({ slug: b.dataset.slug, nom: b.dataset.nom, taille: '' });
+          ecrire(selection); rendre(); montrer(dlgP.dataset.ajoute);
+        } else { dlgP.showModal ? dlgP.showModal() : dlgP.setAttribute('open', ''); }
+      });
+    });
+    liste.addEventListener('click', function (e) {
+      if (e.target.classList.contains('retirer')) { selection.splice(+e.target.dataset.i, 1); ecrire(selection); rendre(); }
+    });
+    liste.addEventListener('input', function (e) {
+      if (e.target.dataset.i !== undefined) { selection[+e.target.dataset.i].taille = e.target.value; ecrire(selection); majChamp(); }
+    });
+    bouton.addEventListener('click', function () { rendre(); dlgP.showModal ? dlgP.showModal() : dlgP.setAttribute('open', ''); });
+    dlgP.querySelector('.fermer').addEventListener('click', function () { dlgP.close(); });
+    dlgP.addEventListener('click', function (e) { if (e.target === dlgP) dlgP.close(); });
+    form.addEventListener('submit', majChamp);
+    rendre();
   }
 
   var annee = document.getElementById('annee');
