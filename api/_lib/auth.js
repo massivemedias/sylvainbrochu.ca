@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import { cmd, lireJSON } from "./kv.js";
 import { cookies, json } from "./util.js";
 
-export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "__GOOGLE_CLIENT_ID__";
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "906629736499-5ffdeup03ugg5kno2nooheph13avlf6c.apps.googleusercontent.com";
 export const ACCES_DEFAUT = ["massivemedias@gmail.com", "info@sylvainbrochu.ca", "sylvain@lecartel.ca", "sylvain@cartel.ca"];
 const TEMOIN = "sb_session";
 const JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
