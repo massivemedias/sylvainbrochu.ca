@@ -996,7 +996,7 @@ const SITES = [
   ["Hôtellerie Jobs", (q) => `https://www.hotelleriejobs.com/fr/jobs?search=${encodeURIComponent(q)}`],
 ];
 function pOffres() {
-  $("#page").innerHTML = entete("Offres pour moi", "Des offres en production, en événementiel et en bar ou service, cherchées pour moi chaque jour sur une quinzaine de sites d'emploi du grand Montréal. Sur celle qui m'intéresse, je clique « Je postule ».",
+  $("#page").innerHTML = entete("Offres pour moi", "Des offres en production, en événementiel et en bar ou service, cherchées pour moi chaque jour sur près de 40 sites d'emploi et pages carrières d'employeurs du grand Montréal. Sur celle qui m'intéresse, je clique « Je postule ».",
     `<button class="btn" data-act="ajouter-offre">J'ajoute une offre trouvée ailleurs</button><button class="btn" data-act="rafraichir-offres">Chercher maintenant</button>`) + `
   <div class="filtres" id="filtres-off"></div>
   <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot (production, bar...)" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
@@ -1059,7 +1059,7 @@ function sourcesLues(o) {
   const l = [...groupes.values()];
   $("#sources-resume").textContent = `${l.filter((g) => g.ok).length} sites sur ${l.length} lus, ${o.etat.filter((s) => s.ok).length} recherches sur ${o.etat.length}`;
   el.innerHTML = `<ul class="liste">${l.map((g) => `<li><div class="t"><b>${E(g.nom)}</b><small>${g.ok + g.ko > 1 ? `${g.ok + g.ko} recherches` : "1 recherche"}${g.ko ? ` | ${g.ko} en échec : ${E(g.erreurs[0] || "")}` : ""}</small></div><span class="${g.ok ? (g.ko ? "aide" : "ok-txt") : "ko-txt"}">${g.ok ? `${g.n} offre${g.n > 1 ? "s" : ""}` : "Non lu"}</span></li>`).join("")}</ul>
-    <p class="aide" style="margin-top:8px">Les offres sont ensuite filtrées : grand Montréal, postes de gestion de mon milieu, sans restauration rapide. Indeed, LinkedIn, Glassdoor et Jobboom arrivent par leurs alertes courriel sur info@.</p>`;
+    <p class="aide" style="margin-top:8px">Les offres sont ensuite filtrées : grand Montréal, postes de gestion de mon milieu, sans restauration rapide. Indeed, Glassdoor et Jobboom bloquent la lecture automatique : leurs offres arrivent par leurs alertes courriel sur info@.</p>`;
 }
 // ---------- Carte des offres (MapLibre + fond OpenFreeMap « Liberty », style proche de Google Maps) ----------
 let carteLibPret = null;

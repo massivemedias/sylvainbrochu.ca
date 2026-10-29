@@ -8,11 +8,12 @@ import { createHash } from "node:crypto";
 import { exiger } from "./_lib/auth.js";
 import { cmd } from "./_lib/kv.js";
 import { alertesEmploi } from "./_lib/mail.js";
+import { SOURCES as AUTRES_SOURCES } from "./_lib/sources.js";
 import { erreur, json, parametres } from "./_lib/util.js";
 
 const CARRIERE = /(chargé|charg[ée]e|gestionnaire|directeur|directrice|direction|coordonnat|responsable|producteur|productrice|chef de projet|project manager|production manager|operations manager|producer|logisti|opérations|operations|événement|evenement|event|scénograph|exposition|fabrication|atelier)/i;
 const EXCLURE = /(communication|médias?\b|medias?\b|philanthrop|journalist|réseaux sociaux|reseaux sociaux|campagne|chargée? de comptes|rédact|redact|édimest|edimest|contenu|publicit|relations publiques|affaires publiques|levée de fonds|financement|collecte de fonds|enseignant|professeur|direct\S*\s+(de\s+)?cr[ée]ation|direct\S*\s+artistique|technicien|technician|journalier|stratège|stratege|graphiste|designer graphique|seo\b|stagiaire|stage |intern\b|comptab|developpeur|développeur|software|ingénieur logiciel|vente au détail|caissier|marketing|ventes|sales|financ|juridique|legal|paie|payroll|data|analyste|cybers|informatique|\bTI\b|\bIT\b|ressources humaines|talent)/i;
-const TEMPO = /(barman|barmaid|bartender|mixolog|serveu|banquet|maître d'hôtel|maitre d'hotel|sommelier|bar\b|salle|réception|evenement|événement)/i;
+const TEMPO = /(barman|barmaid|bartender|mixolog|serveu|busser|d[ée]barrass|banquet|maître d'hôtel|maitre d'hotel|sommelier|bar\b|salle|réception|evenement|événement)/i;
 
 // Restauration rapide et dépanneurs : pas le genre d'emploi temporaire que Sylvain cherche.
 const RAPIDE = /(tim\s*hortons?|mc\s*donald|a\s*&\s*w\b|subway|burger\s*king|starbucks|wendy'?s|\bkfc\b|pizza\s*hut|dairy\s*queen|harvey'?s|second\s*cup|dunkin|popeyes|taco\s*bell|mary\s*brown|domino'?s|pizza\s*pizza|thai\s*express|valentine|belle\s*province|lafleur|chez\s*cora|\bcora\b|benny\s*&|mikes?\s*(resto|restaurant)?\b|normandin|restauration\s*rapide|fast[\s-]*food|casse[\s-]*cro[uû]te|couche[\s-]*tard|d[ée]panneur|caf[ée]\s*d[ée]p[ôo]t|tutti\s*frutti|poulet\s*frit|shawarma|pizzeria)/i;
@@ -86,9 +87,11 @@ async function jooble(q, profil) {
 }
 
 // Pour les grands sites généralistes : il faut un mot du milieu de Sylvain dans le titre (sinon : construction, TI, finance...).
+// Sites généralistes (LinkedIn, Québec emploi...) : « production » seul ne suffit pas (usines, mode, aéronautique).
+const DOMAINE_STRICT = /(événement|evenement|évènement|\bevents?\b|spectacle|scène|scene|tournée|tournee|festival|cultur|exposition|musée|musee|scénograph|scenograph|théâtre|theatre|cirque|divertissement|entertainment|immersi|audiovisuel|diffusion|arts? de la scène|banquet)/i;
 const DOMAINE = /(événement|evenement|évènement|event|spectacle|scène|scene|production|tournée|tournee|festival|cultur|exposition|musée|musee|scénograph|scenograph|théâtre|theatre|cirque|audiovisuel|immersi|divertissement|entertainment|fabrication|atelier|décor|decor|accessoir|salle|diffusion|arts?\b|créati|creati|attraction)/i;
 // Grand Montréal (Sylvain vit à Montréal) : les offres des sites généralistes hors de cette zone sont écartées.
-const REGION = /(montr|laval|longueuil|brossard|boucherville|saint-laurent|st-laurent|verdun|lachine|lasalle|anjou|pointe-claire|dorval|terrebonne|repentigny|blainville|boisbriand|mirabel|j[ée]r[ôo]me|th[ée]r[èe]se|ch[âa]teauguay|la prairie|candiac|saint-hubert|saint-lambert|vaudreuil|kirkland|beaconsfield|westmount|outremont|mont-royal|l[ée]onard|pointe-aux-trembles|rivi[èe]re-des-prairies|rosem[èe]re|mascouche|varennes|sainte-julie|chambly|saint-bruno|saint-eustache|deux-montagnes|pierrefonds|c[ôo]te-saint-luc|hampstead|delson|sainte-catherine|l'[îi]le-perrot|montreal)/i;
+const REGION = /(montr|laval|longueuil|brossard|boucherville|saint-laurent|st-laurent|verdun|lachine|lasalle|anjou|pointe-claire|dorval|terrebonne|repentigny|blainville|boisbriand|mirabel|j[ée]r[ôo]me|th[ée]r[èe]se|ch[âa]teauguay|la prairie|candiac|saint-hubert|saint-lambert|vaudreuil|kirkland|beaconsfield|westmount|outremont|mont-royal|l[ée]onard|pointe-aux-trembles|rivi[èe]re-des-prairies|rosem[èe]re|mascouche|varennes|saint-jean-sur-richelieu|st-jean-sur-richelieu|greater montreal|sainte-julie|chambly|saint-bruno|saint-eustache|deux-montagnes|pierrefonds|c[ôo]te-saint-luc|hampstead|delson|sainte-catherine|l'[îi]le-perrot|montreal)/i;
 const INDUSTRIE = /(journalier|op[ée]rateur|usine|manufactur|machin|soudeur|assembleur|entrep[ôo]t|approvisionnement|ing[ée]nierie|construction|dentaire|dental|alimentaire|agricole|plancher|meuble|plastique|m[ée]tal|m[ée]canique|pharma|chimique|imprimerie|emballage)/i;
 const pertinent = (o) => (!o.lieu || REGION.test(o.lieu)) && !INDUSTRIE.test(`${o.titre} ${o.entreprise}`) && !EXCLURE.test(o.titre);
 const enChamps = (h) => entites(String(h || "").replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, "|")).replace(/\s+/g, " ").replace(/\s*\|\s*/g, "|").replace(/\|+/g, "|");
@@ -277,12 +280,29 @@ async function collecter() {
       return l;
     }).then((l) => l.filter((o) => CARRIERE.test(o.titre) && DOMAINE.test(`${o.titre} ${o.entreprise}`) && pertinent(o)))],
     ...(process.env.MAIL_APP_PASSWORD ? [["Alertes courriel (Indeed, LinkedIn, Glassdoor, Jobboom)", alertes]] : []),
+    // Employeurs du milieu, babillards, Québec emploi et LinkedIn (api/_lib/sources.js).
+    // Sites généralistes : il faut aussi un mot du milieu dans le titre. LinkedIn : peu de requêtes, gardées 12 h.
+    ...AUTRES_SOURCES.map(([nom, f]) => {
+      const generaliste = /^(Québec emploi|LinkedIn|CharityVillage|Accor)/.test(nom);
+      const lire = /^LinkedIn/.test(nom) ? () => enReserve("li:" + nom, 12, f) : f;
+      return [nom, async () => (await lire())
+        .map((o) => (o.profil === "temporaire" && /^(directeur|directrice|direction|gestionnaire|charg|coordonnat|responsable des)/i.test(o.titre) ? { ...o, profil: "carriere" } : o))
+        .filter((o) => (o.profil === "temporaire"
+          ? TEMPO.test(o.titre) && pertinent(o)
+          : CARRIERE.test(o.titre) && !EXCLURE.test(o.titre) && (!generaliste || DOMAINE_STRICT.test(`${o.titre} ${o.entreprise}`)) && pertinent(o)))];
+    }),
     ...(process.env.JOOBLE_KEY ? [["Jooble carrière", () => jooble("directeur de production OR chargé de projets événementiel", "carriere")], ["Jooble temporaire", () => jooble("barman", "temporaire")]] : []),
   ];
   const res = await Promise.allSettled(taches.map(([, f]) => f()));
   const etat = taches.map(([nom], i) => ({ source: nom, ok: res[i].status === "fulfilled", nombre: res[i].status === "fulfilled" ? res[i].value.length : 0, erreur: res[i].status === "rejected" ? String(res[i].reason?.message || res[i].reason).slice(0, 120) : "" }));
   const vu = new Set(); const offres = [];
-  res.forEach((r) => { if (r.status === "fulfilled") r.value.forEach((o) => { if (!o.url || vu.has(o.url)) return; vu.add(o.url); offres.push({ id: id(o.url), ...o }); }); });
+  // Doublons : même lien, ou même titre long publié sur deux sites (la première source, souvent l'employeur, est gardée).
+  const plat = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  res.forEach((r) => { if (r.status === "fulfilled") r.value.forEach((o) => {
+    const cleTitre = plat(o.titre).length > 25 ? "t:" + plat(o.titre) : "";
+    if (!o.url || vu.has(o.url) || (cleTitre && vu.has(cleTitre))) return;
+    vu.add(o.url); if (cleTitre) vu.add(cleTitre); offres.push({ id: id(o.url), ...o });
+  }); });
   offres.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   // Offres périmées (plus de 75 jours) et restauration rapide écartées.
   const limite = Date.now() - 75 * 864e5;
