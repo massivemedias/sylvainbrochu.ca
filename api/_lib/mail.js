@@ -271,5 +271,9 @@ export async function etat() {
   try {
     const n = await avecImap(async (client) => { const c = await chemins(client); return c; });
     return { pret: true, boite: UTILISATEUR, dossiers: n };
-  } catch (e) { return { pret: false, raison: e.message, boite: UTILISATEUR }; }
+  } catch (e) {
+    const detail = [e.responseText, e.serverResponseCode, e.code].filter(Boolean).join(" | ");
+    const raison = e.authenticationFailed ? `Gmail refuse le mot de passe d'application (${detail || e.message})` : (detail ? `${e.message} : ${detail}` : e.message);
+    return { pret: false, raison, boite: UTILISATEUR, longueurMotDePasse: MOT_DE_PASSE.length };
+  }
 }
