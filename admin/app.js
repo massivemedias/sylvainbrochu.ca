@@ -102,7 +102,8 @@ async function demarrer() {
     rendreCoque();
     window.addEventListener("hashchange", allerA);
     allerA();
-    api("/api/courriels/?action=etat").then((m) => {
+    const etatBoite = () => api("/api/courriels/?action=etat").then((m) => (m.pret ? m : new Promise((ok) => setTimeout(ok, 1500)).then(() => api("/api/courriels/?action=etat"))));
+    etatBoite().then((m) => {
       etat.mail = m;
       if (m.import && m.import.crees.length) toast(`${m.import.crees.length} brouillon${m.import.crees.length > 1 ? "s" : ""} de candidature recréé${m.import.crees.length > 1 ? "s" : ""} dans ${m.boite}.`);
       if (["courriels", "tableau"].includes(etat.page)) rendrePage();
