@@ -160,6 +160,13 @@ export function versHtml(texte) {
   return `<div dir="ltr">${blocs.map((b) => `<p>${lier(echapper(b)).replace(/\n/g, "<br>")}</p>`).join("")}</div>`;
 }
 
+// Un brouillon doit garder la Cci, que MailComposer retire par défaut.
+async function brutBrouillon(msg) {
+  const noeud = new MailComposer(msg).compile();
+  noeud.keepBcc = true;
+  return noeud.build();
+}
+
 async function composer(m) {
   const r = await reglages();
   const pieces = [];
@@ -195,7 +202,7 @@ export async function envoyer(m) {
 
 export async function brouillon(m) {
   const msg = await composer(m);
-  const brut = await new MailComposer(msg).compile().build();
+  const brut = await brutBrouillon(msg);
   return avecImap(async (client) => {
     const c = await chemins(client);
     const r = await client.append(c.brouillons, brut, ["\\Draft", "\\Seen"]);
@@ -266,7 +273,7 @@ export async function synchroniser(liste) {
 }
 
 // Crée dans Gmail les brouillons des candidatures « Brouillon prêt » qui n'en ont pas encore.
-export async function recreerBrouillons(candidatures) {
+export async function recreerBrouillons(candidatures, remplacer = false) {
   const r = await reglages();
   const sig = r.signature || "";
   const liste = (candidatures || []).filter((c) => c && c.statut === "brouillon" && /@/.test(c.courriel || "") && c.texte);
@@ -278,11 +285,12 @@ export async function recreerBrouillons(candidatures) {
     try {
       for (const c of liste) {
         const ad = c.courriel.trim().toLowerCase();
-        const existe = (await client.search({ gmraw: `to:${ad}` }, { uid: true })) || [];
-        if (existe.length) { out.deja.push(ad); continue; }
+        const existe = (await client.search({ gmraw: `to:${ad} from:${INFO}` }, { uid: true })) || [];
+        if (existe.length && !remplacer) { out.deja.push(ad); continue; }
+        if (existe.length) await client.messageDelete(existe, { uid: true });
         const texte = sig && !c.texte.includes(sig.split("\n")[0] + "\n") ? `${c.texte.trimEnd()}\n\n${sig}` : c.texte;
         const msg = await composer({ a: ad, cci: r.cci || "", sujet: c.objet || "", texte, piece: c.cv || "carriere" });
-        const brut = await new MailComposer(msg).compile().build();
+        const brut = await brutBrouillon(msg);
         await client.append(ch.brouillons, brut, ["\\Draft", "\\Seen"]);
         out.crees.push(ad);
       }
