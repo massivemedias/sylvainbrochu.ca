@@ -582,7 +582,7 @@ function pOffres() {
   <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
   <section class="carte carte-offres"><header><h2>Carte des offres</h2><span class="aide" id="geo-etat"></span></header>
     <div id="carte-off" class="carte-geo" role="region" aria-label="Carte des offres d'emploi"></div>
-    <p class="aide legende"><span class="pt pt-c"></span> Carrière <span class="pt pt-t"></span> Temporaire <span class="pt pt-v"></span> Position approximative (ville)</p></section>
+    <p class="aide legende"><span class="pt pt-c"></span> Carrière <span class="pt pt-t"></span> Temporaire <span class="pt pt-v"></span> Pâle : position de la ville (adresse pas encore trouvée)</p></section>
   <div class="offres" id="liste-off"><p class="vide">Recherche des offres...</p></div>
   <div class="grille g2" style="margin-top:22px">
     <section class="carte"><header><h2>Recherches rapides</h2></header>
@@ -620,42 +620,48 @@ async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), for
     ${x.resume ? `<p>${E(x.resume)}</p>` : ""}</article>`).join("") : `<p class="vide">Aucune offre dans ce filtre.</p>`;
   el._offres = l;
 }
-// ---------- Carte des offres (Leaflet + fond OpenStreetMap, chargés à la demande) ----------
-let leafletPret = null;
-function chargerLeaflet() {
-  if (window.L) return Promise.resolve(window.L);
-  if (leafletPret) return leafletPret;
-  leafletPret = new Promise((ok, ko) => {
-    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
-    const js = document.createElement("script"); js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; js.onload = () => ok(window.L); js.onerror = ko; document.head.appendChild(js);
+// ---------- Carte des offres (MapLibre + fond OpenFreeMap « Liberty », style proche de Google Maps) ----------
+let carteLibPret = null;
+function chargerCarteLib() {
+  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  if (carteLibPret) return carteLibPret;
+  carteLibPret = new Promise((ok, ko) => {
+    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"; document.head.appendChild(css);
+    const js = document.createElement("script"); js.src = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"; js.onload = () => ok(window.maplibregl); js.onerror = ko; document.head.appendChild(js);
   });
-  return leafletPret;
+  return carteLibPret;
 }
+const epingle = (couleur, approx) => `<svg width="${approx ? 22 : 28}" height="${approx ? 30 : 38}" viewBox="0 0 28 38" aria-hidden="true"><path d="M14 1C7 1 1.5 6.4 1.5 13.3 1.5 22.6 14 37 14 37s12.5-14.4 12.5-23.7C26.5 6.4 21 1 14 1z" fill="${couleur}" fill-opacity="${approx ? 0.55 : 1}" stroke="#fff" stroke-width="2"/><circle cx="14" cy="13.5" r="${approx ? 3.6 : 4.6}" fill="#fff"/></svg>`;
 async function majCarte(liste) {
   const boite = $("#carte-off"); if (!boite) return;
-  let L; try { L = await chargerLeaflet(); } catch { boite.innerHTML = `<p class="vide">Carte indisponible.</p>`; return; }
+  let ml; try { ml = await chargerCarteLib(); } catch { boite.innerHTML = `<p class="vide">Carte indisponible.</p>`; return; }
   if (!boite.isConnected) return;
   if (!etat.carte || etat.carte.getContainer() !== boite) {
-    etat.carte = L.map(boite, { scrollWheelZoom: false }).setView([45.55, -73.65], 9);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; les contributeurs d'OpenStreetMap" }).addTo(etat.carte);
-    etat.calqueOffres = L.layerGroup().addTo(etat.carte);
+    etat.carte = new ml.Map({ container: boite, style: "https://tiles.openfreemap.org/styles/liberty", center: [-73.65, 45.55], zoom: 7.2, attributionControl: { compact: true } });
+    etat.carte.addControl(new ml.NavigationControl({ showCompass: false }), "top-left");
+    etat.carte.scrollZoom.disable();
+    etat.marqueurs = [];
     etat.carteCadree = false;
   }
-  etat.calqueOffres.clearLayers();
+  (etat.marqueurs || []).forEach((m) => m.remove());
+  etat.marqueurs = [];
   const places = liste.filter((x) => x.geo && x.geo.lat);
   const compte = {};
-  const points = places.map((x) => {
+  const bornes = new ml.LngLatBounds();
+  places.forEach((x) => {
     const k = `${x.geo.lat.toFixed(3)},${x.geo.lon.toFixed(3)}`; const n = (compte[k] = (compte[k] || 0) + 1) - 1;
     const ang = n * 2.4, ray = n ? 0.004 * Math.sqrt(n) : 0; // décale les offres au même endroit
-    const pos = [x.geo.lat + ray * Math.sin(ang), x.geo.lon + ray * Math.cos(ang)];
+    const pos = [x.geo.lon + ray * Math.cos(ang), x.geo.lat + ray * Math.sin(ang)];
     const temp = x.profil === "temporaire", approx = x.geo.precis !== "entreprise";
-    L.circleMarker(pos, { radius: approx ? 6 : 8, color: temp ? "#a9824a" : "#1d1d1b", weight: 2, dashArray: approx ? "3 3" : null, fillColor: temp ? "#c8a26b" : "#2e5e4e", fillOpacity: approx ? 0.25 : 0.85 })
-      .bindPopup(`<b>${E(x.titre)}</b><br>${E(x.entreprise || "")}<br><span style="color:#666">${E(x.lieu || "")}${approx ? " (ville)" : ""}</span><br><a href="${E(x.url)}" target="_blank" rel="noopener">Voir l'offre</a>`)
-      .addTo(etat.calqueOffres);
-    return pos;
+    const el = document.createElement("button");
+    el.type = "button"; el.className = "epingle"; el.title = `${x.titre} | ${x.entreprise || ""}`;
+    el.innerHTML = epingle(temp ? "#e0a33a" : "#1a7f5a", approx);
+    const pop = new ml.Popup({ offset: 30, closeButton: true, maxWidth: "280px" }).setHTML(`<b>${E(x.titre)}</b><br>${E(x.entreprise || "")}<br><span style="color:#666">${E(x.lieu || "")}${approx ? " (position de la ville)" : ""}</span><br><a href="${E(x.url)}" target="_blank" rel="noopener">Voir l'offre</a>`);
+    etat.marqueurs.push(new ml.Marker({ element: el, anchor: "bottom" }).setLngLat(pos).setPopup(pop).addTo(etat.carte));
+    bornes.extend(pos);
   });
-  if (points.length && !etat.carteCadree) { etat.carte.fitBounds(points, { padding: [24, 24], maxZoom: 11 }); etat.carteCadree = true; }
-  setTimeout(() => etat.carte && etat.carte.invalidateSize(), 50);
+  if (places.length && !etat.carteCadree) { etat.carte.fitBounds(bornes, { padding: 50, maxZoom: 11, duration: 0 }); etat.carteCadree = true; }
+  setTimeout(() => etat.carte && etat.carte.resize(), 50);
   const ge = $("#geo-etat");
   if (ge) ge.textContent = `${places.length}/${liste.length} offres placées${etat.offres && etat.offres.geoAttente ? `, localisation en cours (${etat.offres.geoAttente} restantes)` : ""}`;
 }
