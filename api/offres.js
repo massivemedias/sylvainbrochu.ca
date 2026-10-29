@@ -378,11 +378,118 @@ async function offresEnCache(rafraichir) {
   return r;
 }
 
+// ---------- Détail d'une offre : texte complet, salaire, date limite, façon de postuler ----------
+// Lu dans les données structurées JobPosting de la page (Talent.com, Grenier, Hôtellerie Jobs, Jobillico...),
+// sinon dans le texte principal de la page.
+function versTexte(html) {
+  return entites(String(html || "")
+    .replace(/<(script|style|noscript|svg|nav|header|footer|form|button|select|iframe)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<li\b[^>]*>/gi, "\n- ")
+    .replace(/<h\d\b[^>]*>/gi, "\n\n")
+    .replace(/<(br|hr)\b[^>]*>/gi, "\n")
+    .replace(/<\/(p|div|h\d|li|tr|ul|ol|section|article|table)>/gi, "\n")
+    .replace(/<[^>]+>/g, " "))
+    .replace(/[–—]/g, "-").replace(/ /g, " ")
+    .split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).filter((l, i, t) => l || (t[i - 1] && t[i - 1].trim()))
+    .join("\n").replace(/^- *$\n?/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+// Adresses masquées par Cloudflare (data-cfemail) : remises en clair, comme le fait le navigateur.
+function cfEmails(h) {
+  const dec = (hex) => { const k = parseInt(hex.slice(0, 2), 16); let o = ""; for (let i = 2; i < hex.length; i += 2) o += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ k); return o; };
+  return String(h || "").replace(/<(a|span)\b[^>]*data-cfemail="([0-9a-f]+)"[^>]*>[\s\S]*?<\/\1>/gi, (_, __, hex) => dec(hex))
+    .replace(/\/cdn-cgi\/l\/email-protection#([0-9a-f]+)/gi, (_, hex) => "mailto:" + dec(hex));
+}
+const BRUIT_PAGE = /^(chargement en cours.*|ajouter aux favoris|pour ajouter une offre.*|ouvrir une session|s[’']inscrire.*|envoyer par courriel|copier le lien|imprimer|partager|devenir|membre|abonnez|vous|infolettre|-->|[\d ]+|\/)$/i;
+function postingsLD(h) {
+  const out = [];
+  const marcher = (x) => {
+    if (Array.isArray(x)) return x.forEach(marcher);
+    if (!x || typeof x !== "object") return;
+    const t = x["@type"]; if (t === "JobPosting" || (Array.isArray(t) && t.includes("JobPosting"))) out.push(x);
+    if (x["@graph"]) marcher(x["@graph"]);
+  };
+  for (const m of h.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) { try { marcher(JSON.parse(m[1].trim())); } catch { /* JSON invalide */ } }
+  return out;
+}
+const CONTRATS = { FULL_TIME: "temps plein", PART_TIME: "temps partiel", CONTRACTOR: "contrat", CONTRACT: "contrat", TEMPORARY: "temporaire", SEASONAL: "saisonnier", INTERN: "stage", PER_DIEM: "sur appel", VOLUNTEER: "bénévole", PERMANENT: "permanent" };
+const UNITE = { HOUR: "heure", DAY: "jour", WEEK: "semaine", MONTH: "mois", YEAR: "an" };
+function salaireLD(b) {
+  if (!b) return "";
+  const v = b.value || b; const u = UNITE[String(v.unitText || b.unitText || "").toUpperCase()] || "";
+  const n = (x) => (x == null || x === "" ? "" : Number(x).toLocaleString("fr-CA", { maximumFractionDigits: 2 }) + " $");
+  const t = v.minValue && v.maxValue && v.minValue !== v.maxValue ? `${n(v.minValue)} à ${n(v.maxValue)}` : n(v.value ?? v.minValue ?? v.maxValue);
+  return t ? t + (u ? ` / ${u}` : "") : "";
+}
+const SITES_EMPLOI = /(talent\.com|indeed|jobillico|grenier\.qc|cultive\.ca|guichetemplois|jobbank|hotelleriejobs|lever\.co|teamtailor|eluta|linkedin|glassdoor|jobboom|cqt\.ca|sentry|example|wixpress|godaddy)/i;
+function courrielDe(texte) {
+  const l = [...new Set(String(texte || "").match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}/gi) || [])]
+    .map((x) => x.toLowerCase().replace(/\.$/, ""))
+    .filter((x) => !SITES_EMPLOI.test(x.split("@")[1]) && !/(no-?reply|privacy|confidential|accessib|webmaster|abuse|unsubscribe)/i.test(x) && !/\.(png|jpe?g|gif|svg|webp)$/i.test(x));
+  return l.find((x) => /(rh|hr|cv|emploi|job|carri|career|recrut|candidat|talent|people|personnel)/i.test(x)) || l[0] || "";
+}
+function lienPostuler(h, base) {
+  const ext = h.match(/<a\b[^>]*id=["']externalJobLink["'][^>]*href=["']([^"']+)["']/i) || h.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*id=["']externalJobLink["']/i);
+  if (ext) { try { return new URL(entites(ext[1]), base).href; } catch { /* lien invalide */ } }
+  for (const m of h.matchAll(/<a\b[^>]*?href=["']([^"'#][^"']*)["'][^>]*>([\s\S]{0,300}?)<\/a>/gi)) {
+    const txt = texte(m[2]);
+    if (!/^(postuler|postulez|apply|apply now|soumettre ma candidature|poser ma candidature|je postule|postuler maintenant|candidature en ligne)\b/i.test(txt)) continue;
+    if (/^(javascript|mailto|tel):/i.test(m[1])) continue;
+    try { return new URL(entites(m[1]), base).href; } catch { /* lien invalide */ }
+  }
+  return "";
+}
+function urlPermise(s) {
+  let u; try { u = new URL(s); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const h = u.hostname;
+  if (!h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(localhost|local|internal|vercel\.app)$/i.test(h)) return null;
+  return u.href;
+}
+export async function detailOffre(url, titreConnu = "") {
+  const ok = urlPermise(url); if (!ok) throw Object.assign(new Error("Lien d'offre invalide"), { status: 400 });
+  const cle = "sb:detail2:" + id(ok);
+  try { const c = await cmd("GET", cle); if (c) return JSON.parse(c); } catch { /* pas de cache */ }
+  const r = await obtenir(ok, { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36", "Accept-Language": "fr-CA,fr;q=0.9,en;q=0.6", Accept: "text/html,*/*" } });
+  const h = cfEmails(await r.text());
+  const p = postingsLD(h)[0];
+  let d;
+  if (p) {
+    const lieu = [].concat(p.jobLocation || [])[0]?.address || {};
+    const fin = p.validThrough ? String(p.validThrough).slice(0, 10) : "";
+    d = {
+      titre: texte(p.title || ""), entreprise: texte(p.hiringOrganization?.name || ""),
+      lieu: [lieu.addressLocality, lieu.addressRegion].filter(Boolean).join(", "),
+      salaire: salaireLD(p.baseSalary), contrat: [].concat(p.employmentType || []).map((t) => CONTRATS[String(t).toUpperCase().replace(/[\s-]/g, "_")] || String(t).replace(/_/g, " ").toLowerCase()).join(", "),
+      date: p.datePosted || "", echeance: /^\d{4}-\d{2}-\d{2}$/.test(fin) && fin > new Date().toISOString().slice(0, 10) ? fin : "",
+      description: versTexte(p.description || ""), origine: "donnees",
+    };
+    d.courriel = courrielDe(p.applicationContact?.email || "") || courrielDe(p.description);
+  } else {
+    const zone = (h.match(/<main\b[\s\S]*?<\/main>/i) || h.match(/<article\b[\s\S]*?<\/article>/i) || [h.replace(/^[\s\S]*?<body\b[^>]*>/i, "")])[0];
+    const titre = texte((h.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || (h.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || "");
+    let txt = versTexte(zone).split("\n").filter((l) => !BRUIT_PAGE.test(l.replace(/^- /, "").trim())).join("\n").replace(/\n{3,}/g, "\n\n");
+    // On commence au titre du poste quand on le retrouve (saute les menus du site).
+    const t0 = String(titreConnu || "").trim().toLowerCase();
+    const i = t0 ? txt.toLowerCase().indexOf(t0) : -1;
+    if (i > 0 && i < txt.length * 0.6) txt = txt.slice(i);
+    const lim = (txt.match(/date limite\s*:?\s*(\d{4}-\d{2}-\d{2})/i) || [])[1] || "";
+    d = { titre: titreConnu || titre, entreprise: "", lieu: "", salaire: "", contrat: "", date: "", echeance: lim > new Date().toISOString().slice(0, 10) ? lim : "", description: txt.trim(), origine: "page" };
+    d.courriel = courrielDe(txt) || courrielDe((zone.match(/mailto:[^"'?]+/gi) || []).join(" "));
+  }
+  d.description = d.description.slice(0, 7000);
+  d.postuler = lienPostuler(h, ok);
+  d.methode = d.courriel ? "courriel" : "site";
+  d.url = ok;
+  try { await cmd("SET", cle, JSON.stringify(d), "EX", 14 * 86400); } catch { /* cache facultatif */ }
+  return d;
+}
+
 export default async function handler(req, res) {
   try {
     const u = await exiger(req, res); if (!u) return;
     if (req.method !== "GET") return json(res, 405, { erreur: "Méthode non permise" });
     const q = parametres(req);
+    if (q.get("detail")) return json(res, 200, await detailOffre(q.get("detail"), q.get("titre") || ""));
     const r = await offresEnCache(q.get("rafraichir") === "1");
     let geo = await lireGeo();
     if (q.get("geo") === "1") geo = await localiser(r, geo);
