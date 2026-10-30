@@ -724,3 +724,16 @@ dialog.panier::backdrop { background: rgba(10,9,12,.6); }
 .resa-merci { margin: 22px 0 32px; padding: 18px 20px; background: var(--nuit-3); border-left: 2px solid var(--laiton); color: var(--ivoire); }
 .resa-form .resa-etat { margin: 0; font-size: .9rem; color: var(--laiton); min-height: 1em; }
 .resa-form .resa-etat:empty { display: none; }
+/* Accueil : kimonos Onomiko en gros plan après le luminaire, et section Onomiko */
+.hero .hero-diapo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 2.4s ease; filter: brightness(.7) saturate(1.02); object-position: 50% 38%; }
+.hero .hero-diapo.actif { opacity: 1; animation: derive 26s ease-in-out infinite alternate; }
+.hero-legende { position: absolute; z-index: 2; top: clamp(96px, 14vh, 150px); right: max(var(--gutter), calc((100vw - var(--max)) / 2 + var(--gutter))); margin: 0;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; opacity: 0; transform: translateY(-6px); transition: opacity .9s ease, transform .9s ease; pointer-events: none; }
+.hero-legende.visible { opacity: 1; transform: none; pointer-events: auto; }
+.hero-legende span { font-size: .82rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ivoire); }
+.hero-legende a { color: var(--laiton); font-weight: 600; font-size: .95rem; }
+.ono-accueil .tete { align-items: end; }
+.ono-accueil .tete .surtitre { margin: 0 0 12px; justify-self: start; max-width: none; color: var(--laiton); }
+.ono-accueil .suite { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 34px; }
+@media (max-width: 760px) { .hero-legende { top: 84px; right: var(--gutter); } .hero-legende span { font-size: .72rem; } }
+@media (prefers-reduced-motion: reduce) { .hero .hero-diapo { transition: none; } }

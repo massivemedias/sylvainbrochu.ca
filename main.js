@@ -6,6 +6,27 @@
     var allumer = function () { hero.classList.add('lit'); };
     if (heroImg.complete) allumer();
     else { heroImg.addEventListener('load', allumer); setTimeout(allumer, 2500); }
+    // Après le luminaire, des kimonos Onomiko en gros plan défilent lentement (pas si le mouvement est réduit)
+    var suite = hero.querySelector('template.hero-suite');
+    if (suite && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      var lancer = function () {
+        var frag = suite.content.cloneNode(true);
+        var diapos = Array.prototype.slice.call(frag.querySelectorAll('img'));
+        hero.insertBefore(frag, suite);
+        var leg = hero.querySelector('.hero-legende'), i = -1;
+        var suivante = function () {
+          if (document.hidden) return;
+          i = (i + 1) % (diapos.length + 1); // la dernière étape revient au luminaire
+          var d = diapos[i];
+          if (d && !d.complete) { i--; return; } // on attend que la photo soit chargée
+          diapos.forEach(function (x, k) { x.classList.toggle('actif', k === i); });
+          if (leg) { leg.classList.toggle('visible', !!d); if (d) leg.querySelector('span').textContent = d.dataset.legende || ''; }
+        };
+        setInterval(suivante, 7000);
+      };
+      if (document.readyState === 'complete') setTimeout(lancer, 3000);
+      else window.addEventListener('load', function () { setTimeout(lancer, 3000); });
+    }
   }
 
   // Navigation : fond opaque après le hero, menu mobile
