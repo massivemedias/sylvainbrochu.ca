@@ -35,7 +35,7 @@ export const CV_CARRIERE = {
  "titreExperiences": "Expériences professionnelles",
  "experiences": [
   {
-   "poste": "Assistant à la production et responsable des accessoires",
+   "poste": "Assistant à la production et membre de l'équipe des accessoiristes",
    "employeur": "Spectacle du Grand Prix de Formule 1",
    "lieu": "Montréal, Canada | 2026",
    "puces": [
