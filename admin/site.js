@@ -35,6 +35,8 @@ export function creerSite(ctx) {
   const s = (etat.site = etat.site || { pret: null, pages: null, chemin: "index.html", doc: null });
 
   const nbModifs = () => (s.doc ? s.modifs.size + s.nb : 0);
+  const guideVu = () => { try { return localStorage.getItem("sb-site-guide") === "vu"; } catch { return false; } };
+  if (s.zones === undefined) s.zones = !!(window.matchMedia && matchMedia("(hover: none)").matches);
   const sale = () => nbModifs() > 0 || (s.photos && s.photos.length > 0);
   window.addEventListener("beforeunload", (e) => { if (sale()) { e.preventDefault(); e.returnValue = ""; } });
 
@@ -66,12 +68,23 @@ export function creerSite(ctx) {
       .map((c) => `<option value="${E(c)}" ${c === s.chemin ? "selected" : ""}>${E(nomPage(c))}</option>`).join("")}</optgroup>`).join("");
     const jumelle = cheminJumeau();
     $("#page").innerHTML = entete("Mon site", "Clique un texte pour le corriger, clique une photo pour la changer. Rien ne change sur ton site tant que tu n'as pas cliqué « Publier ».", "") + `
+    ${guideVu() ? "" : `<div class="carte st-guide"><div>
+      <h2>Comment ça marche</h2>
+      <ol>
+        <li>Choisis la page à corriger dans la liste « Page ».</li>
+        <li>Clique un texte sur la page et écris directement, comme dans un courriel. Dans une liste, Entrée ajoute une ligne.</li>
+        <li>Clique une photo pour la remplacer, la déplacer ou la supprimer. Sous chaque galerie, le bouton « + Ajouter des photos » en ajoute.</li>
+        <li>Clique « Publier ». Ta page est en ligne environ une minute plus tard, un message te le confirme.</li>
+      </ol>
+      <p class="aide">Un texte qui revient sur plusieurs pages (par exemple le titre d'un projet sur l'accueil) se corrige sur chaque page. Le site en anglais se corrige à part, avec le bouton « Version anglaise ».</p>
+    </div><button class="btn petit" data-st="compris">Compris</button></div>`}
     <div class="st-barre carte">
       <label class="st-choix"><span>Page</span><select id="st-page">${options}</select></label>
       <div class="st-liens">
         <a class="btn petit" href="${E(urlPage(s.chemin))}" target="_blank" rel="noopener">Voir en ligne</a>
         ${jumelle ? `<button class="btn petit" data-st="jumelle">${s.chemin.startsWith("en/") ? "Version française" : "Version anglaise"}</button>` : ""}
         <button class="btn petit" data-st="google">Titre et description Google</button>
+        <button class="btn petit" data-st="zones" aria-pressed="${s.zones ? "true" : "false"}">${s.zones ? "Cacher les zones modifiables" : "Montrer ce qui se modifie"}</button>
       </div>
       <div class="st-etat"><span id="st-compte"></span>
         <button class="btn petit" data-st="annuler" id="st-annuler">Annuler mes changements</button>
@@ -88,8 +101,8 @@ export function creerSite(ctx) {
   function majBarre() {
     const n = nbModifs(), c = $("#st-compte"), p = $("#st-publier"), a = $("#st-annuler");
     if (!c) return;
-    c.textContent = s.envoi ? "Publication..." : n ? `${n} changement${n > 1 ? "s" : ""} pas encore publié${n > 1 ? "s" : ""}` : (s.publieLe ? "Publié. Ton site sera à jour dans environ une minute." : "Aucun changement");
-    c.className = n ? "st-attente" : s.publieLe ? "st-ok" : "";
+    c.textContent = s.envoi ? "Publication..." : n ? `${n} changement${n > 1 ? "s" : ""} pas encore publié${n > 1 ? "s" : ""}` : s.enLigne ? "En ligne sur ton site." : s.publieLe ? "Publié. Mise en ligne en cours, environ une minute..." : "Aucun changement";
+    c.className = n ? "st-attente" : s.enLigne ? "st-ok" : s.publieLe ? "st-encours" : "";
     p.disabled = !n || s.envoi; a.disabled = !n || s.envoi;
   }
 
@@ -105,7 +118,7 @@ export function creerSite(ctx) {
     s.chemin = c; s.sha = r.sha;
     s.doctype = (r.contenu.match(/^\s*<!doctype[^>]*>/i) || ["<!doctype html>"])[0].trim();
     s.doc = new DOMParser().parseFromString(r.contenu, "text/html");
-    s.orig = new Map(); s.modifs = new Set(); s.nb = 0; s.photos = []; s.figs = new Set(); s.grilles = new Set(); s.locales = new Map(); s.defil = 0; s.publieLe = null;
+    s.orig = new Map(); s.modifs = new Set(); s.nb = 0; s.photos = []; s.figs = new Set(); s.grilles = new Set(); s.locales = new Map(); s.defil = 0; s.publieLe = null; s.enLigne = false;
   }
 
   function cheminJumeau() {
@@ -156,6 +169,7 @@ export function creerSite(ctx) {
     const d = f.contentDocument; if (!d) return;
     $(".st-cadre")?.classList.remove("charge");
     d.querySelectorAll('[data-cms-t="t"]').forEach((el) => { el.contentEditable = "true"; el.spellcheck = true; });
+    d.documentElement.classList.toggle("cms-zones", !!s.zones);
     d.querySelectorAll('[data-cms-t="g"]').forEach((g) => ajouterBoutonGalerie(d, g));
     d.addEventListener("click", (e) => {
       const ajout = e.target.closest("[data-cms-ajout]");
@@ -196,7 +210,7 @@ export function creerSite(ctx) {
         x.replaceWith(...x.childNodes);
       } else if (x.tagName === "SPAN" && !x.attributes.length) x.replaceWith(...x.childNodes);
     }
-    return c.innerHTML.replace(/(?:<br>\s*)+$/, "").replace(/&nbsp;(?=\s|$)|(?<=\s)&nbsp;/g, " ").replace(/^\s+|\s+$/g, (m) => (m.includes("\n") ? m : ""));
+    return c.innerHTML.replace(/(?:<br>\s*)+$/, "").replace(/&nbsp;(?=\s|$)/g, " ").replace(/(\s)&nbsp;/g, "$1 ").replace(/^\s+|\s+$/g, (m) => (m.includes("\n") ? m : ""));
   }
 
   function majTexte(el) {
@@ -263,8 +277,9 @@ export function creerSite(ctx) {
     const k = Math.min(1, largeur / src.width);
     const c = document.createElement("canvas"); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
     const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(src, 0, 0, c.width, c.height);
-    let d = c.toDataURL("image/webp", 0.82), ext = "webp";
-    if (!d.startsWith("data:image/webp")) { d = c.toDataURL("image/jpeg", 0.86); ext = "jpg"; }
+    let q = 0.82, d = c.toDataURL("image/webp", q), ext = "webp";
+    if (!d.startsWith("data:image/webp")) { q = 0.86; d = c.toDataURL("image/jpeg", q); ext = "jpg"; }
+    while (d.length > 2_800_000 && q > 0.5) { q -= 0.08; d = c.toDataURL(ext === "webp" ? "image/webp" : "image/jpeg", q); }
     return { d, ext, w: c.width, h: c.height };
   }
   // Prépare 3 ou 4 tailles de la photo et les envoie ; renvoie les variantes prêtes à publier.
@@ -303,6 +318,7 @@ export function creerSite(ctx) {
       <div class="st-photo"><img src="${E(vue?.currentSrc || vue?.src || brut.getAttribute("src") || "")}" alt=""></div>
       <label class="champ large"><span>Description de la photo (lue par Google et par les personnes aveugles)</span><textarea name="alt" rows="2">${E(brut.getAttribute("alt") || "")}</textarea></label>
       ${fig && fig.querySelector("figcaption") ? `<p class="aide">La légende sous la photo se corrige directement sur la page.</p>` : ""}
+      ${enGalerie ? `<div class="st-ordre"><span>Place dans la galerie</span><button type="button" class="btn petit" data-m="avant">Déplacer avant</button><button type="button" class="btn petit" data-m="apres">Déplacer après</button></div>` : ""}
       <p class="aide st-envoi" hidden><span class="tourne"></span> Préparation de la photo...</p>`,
     `${enGalerie ? `<button class="btn danger" data-m="supprimer">Supprimer la photo</button>` : "<span></span>"}
      <div class="actions"><label class="btn">Remplacer la photo<input type="file" accept="image/*,.heic,.heif" hidden></label><button class="btn laiton" data-m="ok">OK</button></div>`,
@@ -324,6 +340,18 @@ export function creerSite(ctx) {
         if (alt !== (brut.getAttribute("alt") || "")) { brut.setAttribute("alt", alt); vue && vue.setAttribute("alt", alt); s.nb++; if (fig) s.figs.add(fig); majBarre(); }
         fermerModale();
       };
+      const ordre = () => {
+        const av = $('[data-m="avant"]', m), ap = $('[data-m="apres"]', m); if (!av) return;
+        av.disabled = !fig.previousElementSibling; ap.disabled = !fig.nextElementSibling;
+      };
+      const deplacer = (sens) => {
+        const vueFig = vue?.closest("figure");
+        if (sens < 0 && fig.previousElementSibling) { fig.previousElementSibling.before(fig); vueFig?.previousElementSibling && vueFig.previousElementSibling.before(vueFig); }
+        else if (sens > 0 && fig.nextElementSibling) { fig.nextElementSibling.after(fig); vueFig?.nextElementSibling && vueFig.nextElementSibling.after(vueFig); }
+        else return;
+        s.nb++; majBarre(); ordre(); vueFig?.scrollIntoView({ block: "center", behavior: "smooth" });
+      };
+      if ($('[data-m="avant"]', m)) { $('[data-m="avant"]', m).onclick = () => deplacer(-1); $('[data-m="apres"]', m).onclick = () => deplacer(1); ordre(); }
       const sup = $('[data-m="supprimer"]', m);
       if (sup) sup.onclick = () => {
         if (!confirm("Supprimer cette photo de la galerie ?")) return;
@@ -445,12 +473,37 @@ export function creerSite(ctx) {
       s.sha = r.shas?.[s.chemin] || s.sha;
       s.orig = new Map(); s.modifs = new Set(); s.nb = 0; s.photos = []; s.figs = new Set(); s.grilles = new Set();
       blocsTexte(s.doc).forEach((el) => s.orig.set(el, el.innerHTML));
-      s.publieLe = Date.now();
-      toast("Publié. Ton site sera à jour dans environ une minute.");
+      s.publieLe = Date.now(); s.enLigne = false;
+      const anglaise = !s.chemin.startsWith("en/") && cheminJumeau();
+      toast(anglaise ? "Publié. Pense à faire la même correction sur la version anglaise (bouton « Version anglaise »)." : "Publié. Ta page sera à jour dans environ une minute.");
+      verifierEnLigne(s.chemin, s.sha);
     } catch (e) {
       toast(e.code === "REFUS" ? e.message : "Pas publié : " + e.message, true);
     }
     s.envoi = false; majBarre();
+  }
+
+  // La page en ligne est-elle la version publiée ? (même empreinte que le fichier envoyé)
+  async function empreinte(buf) {
+    const tete = new TextEncoder().encode(`blob ${buf.byteLength}\0`);
+    const tout = new Uint8Array(tete.length + buf.byteLength); tout.set(tete); tout.set(new Uint8Array(buf), tete.length);
+    const h = await crypto.subtle.digest("SHA-1", tout);
+    return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function verifierEnLigne(chemin, sha) {
+    const jeton = (s.verif = {});
+    for (let i = 0; i < 40; i++) {
+      await new Promise((ok) => setTimeout(ok, 6000));
+      if (s.verif !== jeton) return;
+      try {
+        const r = await fetch(urlPage(chemin) + "?apercu=" + Date.now(), { cache: "no-store" });
+        if (r.ok && (await empreinte(await r.arrayBuffer())) === sha) {
+          if (s.chemin === chemin && !nbModifs()) { s.enLigne = true; majBarre(); }
+          toast(`C'est en ligne : « ${nomPage(chemin)} » est à jour sur ton site.`);
+          return;
+        }
+      } catch { /* réessai */ }
+    }
   }
 
   async function annuler() {
@@ -465,6 +518,12 @@ export function creerSite(ctx) {
     if (a === "publier") publier();
     if (a === "annuler") annuler();
     if (a === "google") reglagesGoogle();
+    if (a === "compris") { try { localStorage.setItem("sb-site-guide", "vu"); } catch { /* sans mémoire */ } t.closest(".st-guide")?.remove(); }
+    if (a === "zones") {
+      s.zones = !s.zones;
+      t.setAttribute("aria-pressed", s.zones ? "true" : "false"); t.textContent = s.zones ? "Cacher les zones modifiables" : "Montrer ce qui se modifie";
+      apercuDoc()?.documentElement.classList.toggle("cms-zones", s.zones);
+    }
     if (a === "jumelle") { const c = cheminJumeau(); if (c) { $("#st-page").value = c; changerPage(c); } }
   });
 
@@ -480,6 +539,8 @@ html { scroll-behavior: auto !important; }
 figcaption[data-cms-t="t"]:empty::before { content: "Écris une légende (facultatif)"; opacity: .55; font-style: italic; }
 [data-cms-t="i"] { cursor: pointer; }
 [data-cms-t="i"]:hover { outline: 3px solid #c8a26b; outline-offset: -3px; filter: brightness(1.05); }
+.cms-zones [data-cms-t="t"] { outline-color: rgba(200,162,107,.5); }
+.cms-zones [data-cms-t="i"] { outline: 2px dashed rgba(200,162,107,.75); outline-offset: -2px; }
 a, button { cursor: default; }
 .cms-ajout { display: block; width: 100%; margin: 18px 0 0; padding: 16px; border: 2px dashed rgba(200,162,107,.8); border-radius: 6px; background: rgba(200,162,107,.08); color: #c8a26b; font: 600 1rem/1.2 system-ui, sans-serif; cursor: pointer; }
 .cms-ajout:hover { background: rgba(200,162,107,.18); }

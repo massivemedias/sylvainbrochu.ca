@@ -425,3 +425,11 @@ select option { background: #fff; color: var(--texte); }
 .st-photo { background: var(--nuit); border-radius: 6px; display: grid; place-items: center; padding: 10px; margin-bottom: 14px; }
 .st-photo img { max-width: 100%; max-height: 46vh; object-fit: contain; border-radius: 3px; }
 @media (max-width: 900px) { .st-etat { margin-left: 0; } .st-cadre iframe { height: 70vh; } }
+.st-guide { display: flex; gap: 18px; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; border-color: rgba(200,162,107,.55); background: #fffaf1; }
+.st-guide h2 { margin: 0 0 8px; font: 700 1.15rem/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.st-guide ol { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 4px; }
+.st-guide .aide { margin: 0; }
+#st-compte.st-encours { color: var(--info); font-weight: 600; }
+.st-ordre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; font-size: .88rem; color: var(--doux); }
+.st-ordre span { margin-right: 4px; }
+.btn[aria-pressed="true"] { background: var(--nuit); color: var(--ivoire); border-color: var(--nuit); }
