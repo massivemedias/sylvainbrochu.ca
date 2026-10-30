@@ -57,7 +57,7 @@ export const CV_CARRIERE = {
    "puces": [
     "Planifié et livré plus de 35 expositions et projets culturels, environ quatre saisons d'exposition par année.",
     "Orchestré jusqu'à 10 expositions simultanées dans une dizaine de salles, avec une dizaine d'artistes.",
-    "Dirigé 3 employés à temps plein, environ 5 assistants monteurs, des artisans et des sous-traitants.",
+    "Dirigé 2 à 3 employés à temps partiel et 2 à 3 assistants monteurs selon les saisons, ainsi que des artisans et des sous-traitants.",
     "Géré les budgets de production (15 000 $ à 20 000 $ par saison), les achats et les fournisseurs.",
     "Assuré la gestion opérationnelle du bâtiment et de son entretien."
    ]

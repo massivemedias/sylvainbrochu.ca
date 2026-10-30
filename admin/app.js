@@ -733,7 +733,7 @@ const POINTS = {
     [/(tournée|tournee|international|expédition|expedition|transport|douane|logistique)/gi, "Au Cirque du Soleil, j'ai géré fournisseurs, échéanciers et expéditions internationales (palettes, carnets ATA), et préparé les costumes en tournée internationale avec Varekai."],
     [/(spectacle|scène|scene|théâtre|theatre|cirque|arts vivants|diffusion)/gi, "J'ai travaillé huit ans au Cirque du Soleil, du siège social à la tournée Varekai, et sur les premières de LOVE à Las Vegas et de Corteo à New York."],
     [/(événement|evenement|évènement|festival|congrès|congres|corporatif)/gi, "En événementiel, j'ai organisé de grands événements culturels jusqu'à 1 000 invités : logistique, fournisseurs, licences, budget et calendrier."],
-    [/(équipe|equipe|supervis|diriger|encadr|gestion du personnel)/gi, "J'ai dirigé 3 employés à temps plein, environ 5 assistants monteurs, des artisans et des sous-traitants."],
+    [/(équipe|equipe|supervis|diriger|encadr|gestion du personnel)/gi, "J'ai dirigé de 2 à 3 employés à temps partiel et de 2 à 3 assistants monteurs selon les saisons, ainsi que des artisans et des sous-traitants."],
     [/(bâtiment|batiment|immeuble|entretien|maintenance|gestion des lieux)/gi, "J'ai aussi assuré la gestion opérationnelle d'un bâtiment et de son entretien."],
     [/(anglais|bilingue|english)/gi, "Je travaille en français et en anglais."],
     [/(\bsap\b|excel|suite office|google workspace)/gi, "J'utilise SAP, Excel et Google Workspace au quotidien."],
