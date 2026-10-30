@@ -1,6 +1,7 @@
 // Admin de sylvainbrochu.ca : recherche d'emploi de Sylvain Brochu.
 import { genererPDF } from "./cvpdf.js";
 import { creerBoutique } from "./boutique.js";
+import { creerSite } from "./site.js";
 
 // ---------- Outils ----------
 const E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -119,11 +120,12 @@ const I = {
   stats: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   modeles: '<path d="M4 4h16v6H4zM4 14h7v6H4zM15 14h5v6h-5z"/>',
   boutique: '<path d="M12 6.5a2 2 0 1 1 2-2"/><path d="M12 6.5v1.2L3 15.5h18l-9-7.8"/><path d="M5 15.5v4h14v-4"/>',
+  site: '<path d="M3 5h18v14H3z"/><path d="M3 9h18M7 13h6M7 16h4"/><path d="m15.5 16.5 3-3"/>',
   reglages: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
 };
 const ico = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ""}</svg>`;
 // Pages principales, puis outils (plus discrets dans le menu).
-const PAGES = [["tableau", "Aujourd'hui"], ["offres", "Offres d'emploi"], ["candidatures", "Mes candidatures"], ["courriels", "Mes courriels"], ["cv", "Mon CV"], ["boutique", "Ma boutique"], ["stats", "Visites du site"], ["modeles", "Modèles de courriels"], ["reglages", "Réglages"]];
+const PAGES = [["tableau", "Aujourd'hui"], ["offres", "Offres d'emploi"], ["candidatures", "Mes candidatures"], ["courriels", "Mes courriels"], ["cv", "Mon CV"], ["boutique", "Ma boutique"], ["site", "Mon site"], ["stats", "Visites du site"], ["modeles", "Modèles de courriels"], ["reglages", "Réglages"]];
 const OUTILS = ["stats", "modeles", "reglages"];
 
 // ---------- Calculs sur les candidatures ----------
@@ -167,6 +169,12 @@ const candParCourriel = (adresse) => { const a = String(adresse || "").toLowerCa
 let modBoutique = null;
 function boutique() {
   return modBoutique || (modBoutique = creerBoutique({ etat, E, $, api, toast, ouvrirModale, fermerModale, entete, ouvrirComposeur, dateHeure, rafraichirCompteurs: () => majCompteurs() }));
+}
+
+// ---------- Mon site (admin/site.js) ----------
+let modSite = null;
+function site() {
+  return modSite || (modSite = creerSite({ etat, E, $, api, toast, ouvrirModale, fermerModale, entete }));
 }
 
 // ---------- Démarrage ----------
@@ -284,7 +292,7 @@ function allerA() {
   window.scrollTo(0, 0);
 }
 function rendrePage() {
-  const f = { tableau: pTableau, candidatures: pCandidatures, courriels: pCourriels, offres: pOffres, cv: pCV, boutique: () => boutique().page(), stats: pStats, modeles: pModeles, reglages: pReglages }[etat.page];
+  const f = { tableau: pTableau, candidatures: pCandidatures, courriels: pCourriels, offres: pOffres, cv: pCV, boutique: () => boutique().page(), site: () => site().page(), stats: pStats, modeles: pModeles, reglages: pReglages }[etat.page];
   f();
   majCompteurs();
 }

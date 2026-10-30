@@ -408,3 +408,20 @@ select option { background: #fff; color: var(--texte); }
 .bq-ajout { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; aspect-ratio: 4 / 5; border-radius: 6px; background: var(--carte-2); color: var(--doux); cursor: pointer; text-align: center; font-size: .85rem; padding: 8px; }
 .bq-ajout b { font-size: 1.8rem; font-weight: 400; color: var(--laiton-fonce); line-height: 1; }
 .bq-ajout:hover { background: var(--neutre-fond); color: var(--texte); }
+
+/* ---------- Mon site (éditeur des pages) ---------- */
+.st-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 12px 14px; margin-bottom: 12px; position: sticky; top: 0; z-index: 5; }
+.st-choix { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem; }
+.st-choix select { min-width: 240px; max-width: 360px; padding: 7px 10px; border: 1px solid var(--trait-fort); border-radius: 6px; background: var(--carte); }
+.st-liens { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-etat { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#st-compte { font-size: .86rem; color: var(--doux); }
+#st-compte.st-attente { color: var(--att); font-weight: 600; }
+#st-compte.st-ok { color: var(--ok); font-weight: 600; }
+.st-cadre { border: 1px solid var(--trait-fort); border-radius: 8px; overflow: hidden; background: var(--nuit); box-shadow: var(--ombre); transition: opacity .2s; }
+.st-cadre.charge { opacity: .45; pointer-events: none; }
+.st-cadre iframe { display: block; width: 100%; height: calc(100vh - 230px); min-height: 520px; border: 0; background: var(--nuit); }
+.st-aide { margin-top: 10px; }
+.st-photo { background: var(--nuit); border-radius: 6px; display: grid; place-items: center; padding: 10px; margin-bottom: 14px; }
+.st-photo img { max-width: 100%; max-height: 46vh; object-fit: contain; border-radius: 3px; }
+@media (max-width: 900px) { .st-etat { margin-left: 0; } .st-cadre iframe { height: 70vh; } }

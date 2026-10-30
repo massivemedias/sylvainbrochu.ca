@@ -39,7 +39,7 @@ export const CV_CARRIERE = {
    "employeur": "Spectacle du Grand Prix de Formule 1",
    "lieu": "Montréal, Canada | 2026",
    "puces": [
-    "Accessoires scénographiques du spectacle, direction artistique de Hugues Letellier : recherche, prototypage, achats et production.",
+    "Membre de l'équipe des accessoiristes du spectacle, sous la direction artistique de Hugues Letellier : recherche et achat des matériaux, soutien à une partie du prototypage, production et assemblage.",
     "Négocié les prix auprès des fournisseurs et optimisé l'assemblage pour tenir le budget et l'échéancier.",
     "Nombreuses tâches de production en appui direct au directeur artistique, jusqu'à la livraison."
    ]
