@@ -69,7 +69,6 @@ export const CV_CARRIERE = {
    "puces": [
     "Luminaires sur mesure et pièces uniques pour l'hôtellerie, des résidences, des événements, la télé et le théâtre (Canal Vie, Cité-Amérique, TNM).",
     "Dirigé un réseau de sous-traitants (soudeurs, découpe CNC, souffleurs de verre, imprimeurs, monteurs), de la conception à l'installation.",
-    "Hôtel-boutique Maison Grinder : une centaine de luminaires, des 16 chambres au restaurant, et direction artistique de l'installation.",
     "Deux grandes résidences à Saint-Hyacinthe : des mois de fabrication et une semaine d'installation chacune.",
     "Éclairage d'ambiance pour une réception privée à Sagard et un spectacle au sommet du Mont-Tremblant (Cirque du Soleil)."
    ]

@@ -11,6 +11,16 @@
       "source": "/cv/sylvain-brochu-cv.pdf",
       "destination": "/api/cv/?v=carriere",
       "permanent": false
+    },
+    {
+      "source": "/projets/maison-grinder/",
+      "destination": "/projets/",
+      "permanent": true
+    },
+    {
+      "source": "/en/projects/maison-grinder/",
+      "destination": "/en/projects/",
+      "permanent": true
     }
   ],
   "functions": {

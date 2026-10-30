@@ -737,3 +737,4 @@ dialog.panier::backdrop { background: rgba(10,9,12,.6); }
 .ono-accueil .suite { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 34px; }
 @media (max-width: 760px) { .hero-legende { top: 84px; right: var(--gutter); } .hero-legende span { font-size: .72rem; } }
 @media (prefers-reduced-motion: reduce) { .hero .hero-diapo { transition: none; } }
+.panneaux > .panneau:only-child { grid-column: 1 / -1; }

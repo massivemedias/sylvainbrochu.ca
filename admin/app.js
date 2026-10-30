@@ -727,7 +727,6 @@ const POINTS = {
     [/(événement|evenement|évènement|festival|congrès|congres|corporatif)/gi, "En événementiel, j'ai organisé de grands événements culturels jusqu'à 1 000 invités : logistique, fournisseurs, licences, budget et calendrier."],
     [/(équipe|equipe|supervis|diriger|encadr|gestion du personnel)/gi, "J'ai dirigé 3 employés à temps plein, environ 5 assistants monteurs, des artisans et des sous-traitants."],
     [/(bâtiment|batiment|immeuble|entretien|maintenance|gestion des lieux)/gi, "J'ai aussi assuré la gestion opérationnelle d'un bâtiment et de son entretien."],
-    [/(hôtel|hotel|restaura|hôtellerie|hotellerie)/gi, "J'ai créé une centaine de luminaires sur mesure pour l'hôtel-boutique Maison Grinder, des chambres au restaurant, et dirigé l'installation."],
     [/(anglais|bilingue|english)/gi, "Je travaille en français et en anglais."],
     [/(\bsap\b|excel|suite office|google workspace)/gi, "J'utilise SAP, Excel et Google Workspace au quotidien."],
   ],
