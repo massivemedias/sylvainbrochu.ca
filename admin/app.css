@@ -373,3 +373,38 @@ select option { background: #fff; color: var(--texte); }
 .aide.tri { margin: 0 0 2px; }
 .bas60 .offres { margin-top: 4px; }
 .bas60 .offre { opacity: .85; }
+
+/* Ma boutique (admin/boutique.js) */
+.bq-demandes { margin-bottom: 18px; }
+.bq-demandes h2 .pastille { margin-left: 8px; vertical-align: middle; }
+.bq-resa > li { align-items: flex-start; padding: 14px 0; }
+.bq-resa > li.nouvelle .t b::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--urg); vertical-align: 2px; }
+.bq-resa .t small a { color: var(--cedre); }
+.bq-message { margin: 8px 0 0; padding: 10px 12px; background: var(--carte-2); border-radius: 6px; white-space: pre-wrap; font-size: .92rem; }
+.bq-resa .actions { flex-wrap: wrap; justify-content: flex-end; }
+.bq-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 6px 0 14px; }
+.bq-carte { all: unset; box-sizing: border-box; display: flex; flex-direction: column; cursor: pointer; border: 1px solid var(--trait); border-radius: 8px; overflow: hidden; background: var(--carte); transition: border-color .15s, box-shadow .15s, transform .15s; }
+.bq-carte:hover, .bq-carte:focus-visible { border-color: var(--laiton); box-shadow: var(--ombre); transform: translateY(-1px); }
+.bq-vignette { display: block; aspect-ratio: 4 / 5; background: var(--neutre-fond); }
+.bq-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bq-sans { display: grid; place-items: center; height: 100%; color: var(--tres-doux); font-size: .85rem; }
+.bq-info { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 12px; }
+.bq-info b { font-weight: 600; line-height: 1.25; }
+.bq-info small { color: var(--doux); font-size: .82rem; }
+.bq-statut { align-self: flex-start; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-style: normal; font-size: .74rem; font-weight: 600; background: var(--ok-fond); color: var(--ok); }
+.s-reserve .bq-statut { background: var(--att-fond); color: var(--att); }
+.s-vendu .bq-statut { background: var(--neutre-fond); color: var(--doux); }
+.s-cache .bq-statut { background: var(--neutre-fond); color: var(--tres-doux); }
+.s-cache .bq-vignette img { opacity: .45; }
+.bq-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; padding: 10px; border: 1.5px dashed var(--trait-fort); border-radius: 8px; transition: background .15s, border-color .15s; }
+.bq-photos.survol { background: var(--carte-2); border-color: var(--laiton); }
+.bq-ph { position: relative; margin: 0; aspect-ratio: 4 / 5; border-radius: 6px; overflow: hidden; background: var(--neutre-fond); }
+.bq-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bq-principale { position: absolute; left: 6px; top: 6px; padding: 2px 7px; border-radius: 999px; background: var(--nuit); color: var(--laiton); font-style: normal; font-size: .7rem; font-weight: 600; }
+.bq-outils { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 4px; padding: 6px; background: linear-gradient(transparent, rgba(23,21,26,.7)); }
+.bq-outils button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255,253,249,.92); color: var(--texte); cursor: pointer; font-size: 1rem; line-height: 1; }
+.bq-outils button:hover { background: #fff; }
+.bq-outils button[disabled] { opacity: .35; cursor: default; }
+.bq-ajout { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; aspect-ratio: 4 / 5; border-radius: 6px; background: var(--carte-2); color: var(--doux); cursor: pointer; text-align: center; font-size: .85rem; padding: 8px; }
+.bq-ajout b { font-size: 1.8rem; font-weight: 400; color: var(--laiton-fonce); line-height: 1; }
+.bq-ajout:hover { background: var(--neutre-fond); color: var(--texte); }

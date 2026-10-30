@@ -105,5 +105,15 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/onomiko/boutique/:slug/",
+      "destination": "/onomiko/boutique/piece/"
+    },
+    {
+      "source": "/en/onomiko/shop/:slug/",
+      "destination": "/en/onomiko/shop/piece/"
+    }
   ]
 }

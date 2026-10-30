@@ -121,28 +121,6 @@
   </div>
 </section>
 
-<button type="button" class="panier-bouton" hidden aria-haspopup="dialog">Ma sélection <span class="nb">0</span></button>
-<div class="panier-toast" role="status" aria-live="polite"></div>
-<dialog class="panier" aria-label="Ma sélection" data-vide="Votre sélection est vide. Choisissez une ou plusieurs pièces dans la boutique." data-retirer="Retirer" data-taille="Taille ou mesures"
-        data-aide="Ex. M, ou tour de poitrine et hauteur" data-ajoute="Ajoutée à votre sélection">
-  <div class="panier-tete"><h2>Ma sélection</h2><button type="button" class="fermer" aria-label="Fermer">&times;</button></div>
-  <ul class="panier-liste"></ul>
-  <form class="formulaire panier-form" action="https://formsubmit.co/info@sylvainbrochu.ca" method="POST">
-    <h3>Envoyer la demande</h3>
-    <input type="hidden" name="_subject" value="Onomiko : demande de réservation">
-    <input type="hidden" name="_template" value="table">
-    <input type="hidden" name="_cc" value="sylvain@cartel.ca">
-    <input type="hidden" name="_next" value="https://www.sylvainbrochu.ca/onomiko/boutique/merci/">
-    <input type="text" name="_honey" class="sr" tabindex="-1" autocomplete="off" aria-hidden="true">
-    <textarea name="Pieces" class="sr panier-pieces" tabindex="-1" aria-hidden="true"></textarea>
-    <div class="champ"><label for="p-nom">Nom</label><input id="p-nom" name="Nom" type="text" autocomplete="name" required></div>
-    <div class="champ"><label for="p-courriel">Courriel</label><input id="p-courriel" name="email" type="email" autocomplete="email" required></div>
-    <div class="champ"><label for="p-tel">Téléphone (facultatif)</label><input id="p-tel" name="Telephone" type="tel" autocomplete="tel"></div>
-    <div class="champ"><label for="p-message">Message (facultatif)</label><textarea id="p-message" name="Message" rows="3"></textarea></div>
-    <button type="submit" class="bouton">Envoyer ma demande</button>
-    <p class="note">Aucun paiement maintenant. Sylvain vous répond pour confirmer le prix, la taille et la livraison.</p>
-  </form>
-</dialog>
 <section class="appel" aria-labelledby="t-appel-o">
   <div class="wrap">
     <h2 id="t-appel-o">Commandes et collaborations</h2>

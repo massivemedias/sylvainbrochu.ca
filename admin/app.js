@@ -1,5 +1,6 @@
 // Admin de sylvainbrochu.ca : recherche d'emploi de Sylvain Brochu.
 import { genererPDF } from "./cvpdf.js";
+import { creerBoutique } from "./boutique.js";
 
 // ---------- Outils ----------
 const E = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -117,11 +118,12 @@ const I = {
   cv: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
   stats: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   modeles: '<path d="M4 4h16v6H4zM4 14h7v6H4zM15 14h5v6h-5z"/>',
+  boutique: '<path d="M12 6.5a2 2 0 1 1 2-2"/><path d="M12 6.5v1.2L3 15.5h18l-9-7.8"/><path d="M5 15.5v4h14v-4"/>',
   reglages: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
 };
 const ico = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n] || ""}</svg>`;
 // Pages principales, puis outils (plus discrets dans le menu).
-const PAGES = [["tableau", "Aujourd'hui"], ["offres", "Offres d'emploi"], ["candidatures", "Mes candidatures"], ["courriels", "Mes courriels"], ["cv", "Mon CV"], ["stats", "Visites du site"], ["modeles", "Modèles de courriels"], ["reglages", "Réglages"]];
+const PAGES = [["tableau", "Aujourd'hui"], ["offres", "Offres d'emploi"], ["candidatures", "Mes candidatures"], ["courriels", "Mes courriels"], ["cv", "Mon CV"], ["boutique", "Ma boutique"], ["stats", "Visites du site"], ["modeles", "Modèles de courriels"], ["reglages", "Réglages"]];
 const OUTILS = ["stats", "modeles", "reglages"];
 
 // ---------- Calculs sur les candidatures ----------
@@ -138,7 +140,7 @@ const methode = (c) => (c.courriel ? "courriel" : c.formulaire || c.lien ? "site
 const quiCourriel = (x) => (x.de.nom ? `${x.de.nom}${x.entreprise ? ` (${x.entreprise.split(" (")[0]})` : ""}` : x.entreprise ? x.entreprise.split(" (")[0] : x.de.courriel);
 const depuis = (iso) => { const h = Math.floor((Date.now() - Date.parse(iso)) / 3600e3); return h < 1 ? "il y a moins d'une heure" : h < 24 ? `il y a ${h} h` : `il y a ${Math.floor(h / 24)} jour${Math.floor(h / 24) > 1 ? "s" : ""}`; };
 function aFaire() {
-  const out = []; const auj = jour();
+  const out = boutique().taches(); const auj = jour();
   (etat.aRepondre || []).forEach((x) => {
     const c = x.candidatureId ? (etat.d.candidatures || []).find((y) => y.id === x.candidatureId) : null;
     out.push({ type: "repondre", c, x, tri: x.date, texte: `Répondre à ${quiCourriel(x)}`, detail: `« ${x.sujet} », reçu ${depuis(x.date)}${x.formulaire ? " par le formulaire de ton site" : ""}. Répondre vite fait bonne impression.`, bouton: "Lire et répondre" });
@@ -154,12 +156,18 @@ function aFaire() {
     }
     if (c.statut === "brouillon") out.push({ type: "brouillon", c, tri: "9" + (c.priorite || 3), texte: `Envoyer ta candidature chez ${ent}`, detail: "Ton courriel est déjà prêt avec ton CV joint. Relis-le et envoie-le.", bouton: "Relire et envoyer" });
   });
-  const ordre = { repondre: -1, entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
+  const ordre = { reservation: -1, repondre: -1, entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
   return out.sort((a, b) => ordre[a.type] - ordre[b.type] || String(a.tri).localeCompare(String(b.tri)));
 }
 const posteCourt = (p) => { const s = String(p || "").replace(/\s+/g, " ").trim(); return s.length > 70 ? s.slice(0, 68).replace(/\s+\S*$/, "") + "..." : s; };
 function noter(c, texte) { (c.historique = c.historique || []).unshift({ date: jour(), texte }); }
 const candParCourriel = (adresse) => { const a = String(adresse || "").toLowerCase(); const d = domaine(a); return (etat.d.candidatures || []).find((c) => c.courriel && (c.courriel.toLowerCase() === a || (d && !/gmail|hotmail|outlook|yahoo|videotron|icloud/.test(d) && domaine(c.courriel) === d))); };
+
+// ---------- Boutique Onomiko (admin/boutique.js) ----------
+let modBoutique = null;
+function boutique() {
+  return modBoutique || (modBoutique = creerBoutique({ etat, E, $, api, toast, ouvrirModale, fermerModale, entete, ouvrirComposeur, dateHeure, rafraichirCompteurs: () => majCompteurs() }));
+}
 
 // ---------- Démarrage ----------
 // Courriels factices lus par erreur sur certaines pages d'offres (ex. serviceomp@test957.com) : on les retire.
@@ -189,11 +197,13 @@ async function demarrer() {
       dernierRafraichissement = Date.now();
       try { const n = await api("/api/donnees/?cle=tout"); etat.d = n.donnees; if (["tableau", "candidatures"].includes(etat.page)) rendrePage(); } catch { /* hors ligne */ }
       if (etat.mail?.pret && Date.now() - etat.aRepondreT > 5 * 60e3) chargerARepondre();
+      boutique().charger().then((change) => { if (change && ["tableau", "boutique"].includes(etat.page) && $("#modale").hidden) rendrePage(); });
     };
     document.addEventListener("visibilitychange", rafraichir);
     window.addEventListener("focus", rafraichir);
     setInterval(rafraichir, 60000);
     allerA();
+    boutique().charger().then((change) => { if (change && ["tableau", "boutique"].includes(etat.page) && $("#modale").hidden) rendrePage(); });
     const etatBoite = () => api("/api/courriels/?action=etat").then((m) => (m.pret ? m : new Promise((ok) => setTimeout(ok, 1500)).then(() => api("/api/courriels/?action=etat"))));
     etatBoite().then((m) => {
       etat.mail = m;
@@ -261,6 +271,7 @@ function majCompteurs() {
   const nl = (etat.boite.listes.recus || []).filter((m) => !m.lu).length;
   const em = $('[data-c="courriels"]'); if (em) { em.hidden = !nl; em.textContent = nl; }
   const no = etat.offres ? etat.offres.offres.filter((o) => estNouvelle(o) && !sous60(o) && !(etat.d["offres-masquees"] || []).includes(o.id)).length : 0;
+  const nb = boutique().compte(); const eb = $('[data-c="boutique"]'); if (eb) { eb.hidden = !nb; eb.textContent = nb; eb.title = `${nb} demande${nb > 1 ? "s" : ""} de réservation`; }
   const eo = $('[data-c="offres"]'); if (eo) { eo.hidden = !no; eo.textContent = no; eo.title = `${no} nouvelle${no > 1 ? "s" : ""} offre${no > 1 ? "s" : ""}`; }
 }
 function allerA() {
@@ -273,7 +284,7 @@ function allerA() {
   window.scrollTo(0, 0);
 }
 function rendrePage() {
-  const f = { tableau: pTableau, candidatures: pCandidatures, courriels: pCourriels, offres: pOffres, cv: pCV, stats: pStats, modeles: pModeles, reglages: pReglages }[etat.page];
+  const f = { tableau: pTableau, candidatures: pCandidatures, courriels: pCourriels, offres: pOffres, cv: pCV, boutique: () => boutique().page(), stats: pStats, modeles: pModeles, reglages: pReglages }[etat.page];
   f();
   majCompteurs();
 }
@@ -477,6 +488,7 @@ function commentPostuler() {
 }
 function boutonTache(t, grand = false) {
   const g = grand ? " grand" : " petit";
+  if (t.type === "reservation") return `<a class="btn laiton${g}" href="#boutique">${t.bouton}</a>`;
   if (t.type === "repondre") return `<button class="btn laiton${g}" data-act="ouvrir-courriel" data-uid="${t.x.uid}">${t.bouton}</button>`;
   if (t.type === "relance") return `<button class="btn laiton${g}" data-act="relancer" data-id="${t.c.id}">${t.bouton}</button>`;
   if (t.type === "reponse") return `<button class="btn laiton${g}" data-act="lire-reponse" data-id="${t.c.id}">${t.bouton}</button>`;

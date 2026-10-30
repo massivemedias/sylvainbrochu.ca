@@ -707,3 +707,20 @@ dialog.panier::backdrop { background: rgba(10,9,12,.6); }
 }
 .fige { display: block; width: 100%; overflow: hidden; border-radius: 2px; background: var(--nuit-2); }
 .fige img { width: 100%; filter: brightness(.94); }
+/* Boutique Onomiko gérée dans l'admin : statut des pièces, formulaire de réservation */
+.produit-visuel { position: relative; }
+.statut-piece { position: absolute; left: 10px; top: 10px; padding: 5px 10px; border-radius: 999px; background: var(--laiton); color: var(--encre); font: 600 .74rem/1 var(--body); letter-spacing: .05em; text-transform: uppercase; }
+.statut-piece.vendu { background: var(--ivoire); }
+.produit .bouton.reserver[disabled], .produit-infos .bouton.reserver[disabled] { opacity: .55; cursor: default; box-shadow: none; }
+.vide-boutique { grid-column: 1 / -1; color: var(--fumee); }
+.produit-absente { padding: 40px 0 80px; }
+.produit-absente h1 { font: 600 clamp(2rem, 4vw, 3rem)/1 var(--display); text-transform: uppercase; margin: 0 0 24px; }
+.produit-galerie.n1 { grid-template-columns: 1fr; }
+.resa-piece { padding: 18px 24px 0; }
+.resa-recap { display: flex; gap: 14px; align-items: center; }
+.resa-recap img { width: 72px; height: 90px; object-fit: cover; border-radius: 2px; background: var(--nuit-3); }
+.resa-recap b { display: block; font: 600 1.35rem/1.05 var(--display); text-transform: uppercase; color: var(--ivoire); }
+.resa-recap span { display: block; margin-top: 4px; font-size: .9rem; color: var(--laiton); }
+.resa-merci { margin: 22px 0 32px; padding: 18px 20px; background: var(--nuit-3); border-left: 2px solid var(--laiton); color: var(--ivoire); }
+.resa-form .resa-etat { margin: 0; font-size: .9rem; color: var(--laiton); min-height: 1em; }
+.resa-form .resa-etat:empty { display: none; }

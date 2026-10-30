@@ -3,6 +3,7 @@ import { ACCES_DEFAUT } from "./auth.js";
 import { CANDIDATURES } from "./seed-candidatures.js";
 import { CV_CARRIERE } from "./cv-carriere.js";
 import { CV_BARMAN } from "./cv-barman.js";
+import { BOUTIQUE_DEPART } from "./boutique-depart.js";
 
 export const SIGNATURE = "Sylvain Brochu\n514-299-5986 | info@sylvainbrochu.ca\nwww.sylvainbrochu.ca";
 
@@ -64,6 +65,7 @@ export const PLATEFORMES = [
 ];
 
 export const DONNEES_DEFAUT = {
+  boutique: BOUTIQUE_DEPART, // pièces Onomiko en vente (gérées dans Ma boutique)
   candidatures: CANDIDATURES,
   "cv-carriere": CV_CARRIERE,
   "cv-barman": CV_BARMAN,

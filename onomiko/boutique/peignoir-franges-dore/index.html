@@ -44,7 +44,7 @@
 </nav>
 <main id="contenu">
 
-<section class="produit-page">
+<section class="produit-page" data-piece>
   <div class="wrap">
     <nav class="fil" aria-label="Fil d'Ariane"><ol><li><a href="/">Accueil</a></li><li><a href="/onomiko/">Onomiko</a></li><li><a href="/onomiko/boutique/">Boutique Onomiko</a></li><li aria-current="page">Peignoir à franges doré</li></ol></nav>
     <div class="produit-grille">
@@ -68,28 +68,6 @@
   </div>
 </section>
 
-<button type="button" class="panier-bouton" hidden aria-haspopup="dialog">Ma sélection <span class="nb">0</span></button>
-<div class="panier-toast" role="status" aria-live="polite"></div>
-<dialog class="panier" aria-label="Ma sélection" data-vide="Votre sélection est vide. Choisissez une ou plusieurs pièces dans la boutique." data-retirer="Retirer" data-taille="Taille ou mesures"
-        data-aide="Ex. M, ou tour de poitrine et hauteur" data-ajoute="Ajoutée à votre sélection">
-  <div class="panier-tete"><h2>Ma sélection</h2><button type="button" class="fermer" aria-label="Fermer">&times;</button></div>
-  <ul class="panier-liste"></ul>
-  <form class="formulaire panier-form" action="https://formsubmit.co/info@sylvainbrochu.ca" method="POST">
-    <h3>Envoyer la demande</h3>
-    <input type="hidden" name="_subject" value="Onomiko : demande de réservation">
-    <input type="hidden" name="_template" value="table">
-    <input type="hidden" name="_cc" value="sylvain@cartel.ca">
-    <input type="hidden" name="_next" value="https://www.sylvainbrochu.ca/onomiko/boutique/merci/">
-    <input type="text" name="_honey" class="sr" tabindex="-1" autocomplete="off" aria-hidden="true">
-    <textarea name="Pieces" class="sr panier-pieces" tabindex="-1" aria-hidden="true"></textarea>
-    <div class="champ"><label for="p-nom">Nom</label><input id="p-nom" name="Nom" type="text" autocomplete="name" required></div>
-    <div class="champ"><label for="p-courriel">Courriel</label><input id="p-courriel" name="email" type="email" autocomplete="email" required></div>
-    <div class="champ"><label for="p-tel">Téléphone (facultatif)</label><input id="p-tel" name="Telephone" type="tel" autocomplete="tel"></div>
-    <div class="champ"><label for="p-message">Message (facultatif)</label><textarea id="p-message" name="Message" rows="3"></textarea></div>
-    <button type="submit" class="bouton">Envoyer ma demande</button>
-    <p class="note">Aucun paiement maintenant. Sylvain vous répond pour confirmer le prix, la taille et la livraison.</p>
-  </form>
-</dialog>
 </main>
 <a class="cv-flottant dl-cv" href="/cv/sylvain-brochu-cv.pdf" download="Sylvain-Brochu-CV.pdf" type="application/pdf" aria-label="Télécharger le CV de Sylvain Brochu en PDF"><svg class="ico" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M8 2v8.5M4.5 7l3.5 3.5L11.5 7M2.5 13.5h11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Télécharger le CV</span></a>
 <footer class="pied">
