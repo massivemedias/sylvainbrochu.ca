@@ -33,19 +33,22 @@
     },
     "api/offres.js": {
       "maxDuration": 45
-    },
-    "api/rappels.js": {
-      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/offres/",
       "schedule": "0 10 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/onomiko/boutique/:slug/",
+      "destination": "/onomiko/boutique/piece/"
     },
     {
-      "path": "/api/rappels/",
-      "schedule": "0 14 * * *"
+      "source": "/en/onomiko/shop/:slug/",
+      "destination": "/en/onomiko/shop/piece/"
     }
   ],
   "headers": [
@@ -114,16 +117,6 @@
           "value": "public, max-age=2592000"
         }
       ]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/onomiko/boutique/:slug/",
-      "destination": "/onomiko/boutique/piece/"
-    },
-    {
-      "source": "/en/onomiko/shop/:slug/",
-      "destination": "/en/onomiko/shop/piece/"
     }
   ]
 }

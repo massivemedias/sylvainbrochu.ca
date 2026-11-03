@@ -7,6 +7,25 @@ import { BOUTIQUE_DEPART } from "./boutique-depart.js";
 
 export const SIGNATURE = "Sylvain Brochu\n514-299-5986 | info@sylvainbrochu.ca\nwww.sylvainbrochu.ca";
 
+export const JACK_WORLD_DEFAUT = {
+  entreprise: "Jack World",
+  poste: "Chargé de projets (installations interactives, expériences immersives, mobilier urbain)",
+  ville: "Saint-Jean-sur-Richelieu",
+  salaire: "90 000 $ / an",
+  courriel: "recrutement@jackworldinc.com",
+  taches: [
+    { id: "contrat", texte: "Recevoir et signer le contrat de travail et la lettre d'offre officielle (salaire 90 000 $, date d'entrée)", fait: false },
+    { id: "convention", texte: "Demander la convention / le manuel de l'employé et les politiques internes", fait: false },
+    { id: "horaire", texte: "Vérifier l'horaire type, la souplesse et le télétravail / déplacements Montréal - Saint-Jean", fait: false },
+    { id: "avantages", texte: "Vérifier les assurances collectives, semaines de vacances, REER et délai d'admissibilité", fait: false },
+    { id: "depenses", texte: "Clarifier le remboursement du kilométrage, des frais de chantier, cellulaire et bottes/EPI", fait: false },
+    { id: "documents", texte: "Préparer mes documents d'embauche : spécimen de chèque (dépôt direct), NAS, formulaires fiscaux, contact d'urgence", fait: false },
+    { id: "jour1", texte: "Confirmer l'heure d'arrivée du jour 1, la personne qui m'accueille, l'ordinateur/outils et mes premiers dossiers", fait: false },
+  ],
+  notesConvention: "",
+  notesProjets: "",
+};
+
 export const REGLAGES = {
   acces: ACCES_DEFAUT,
   relanceJours: 7,
@@ -18,9 +37,30 @@ export const REGLAGES = {
   rappels: true,
   rappelHeures: 3,
   rappelA: "sylvain@cartel.ca",
+  jackWorld: JACK_WORLD_DEFAUT,
 };
 
 export const MODELES = [
+  {
+    id: "jw-questions", nom: "Jack World : questions (contrat, convention, entrée en poste)", cv: "",
+    objet: "Entrée en poste, chargé de projets - Sylvain Brochu",
+    corps: "Bonjour{contact},\n\nMerci encore pour votre confiance, je suis très heureux de me joindre à l'équipe de Jack World comme chargé de projets.\n\nPour bien préparer mon arrivée, pourriez-vous me transmettre :\n- Le contrat de travail / la convention ou le manuel de l'employé ;\n- Les détails sur les assurances collectives et la politique de remboursement des déplacements ;\n- La liste des documents administratifs à vous fournir (spécimen de chèque, formulaires fiscaux) ;\n- L'heure d'arrivée et le déroulement prévus pour ma première journée.\n\nAu plaisir de commencer avec vous,\n\n{signature}",
+  },
+  {
+    id: "jw-documents", nom: "Jack World : envoi de mes documents d'embauche", cv: "",
+    objet: "Documents d'embauche - Sylvain Brochu",
+    corps: "Bonjour{contact},\n\nVoici les documents et renseignements demandés pour mon dossier d'employé chez Jack World.\n\nN'hésitez pas s'il vous manque quoi que ce soit avant mon entrée en poste.\n\nBonne journée,\n\n{signature}",
+  },
+  {
+    id: "jw-suivi", nom: "Jack World : suivi de projet / fournisseur", cv: "",
+    objet: "Suivi de projet - Jack World",
+    corps: "Bonjour{contact},\n\nJe fais suite à notre échange concernant le projet en cours chez Jack World.\n\nVoici les points à confirmer de votre côté :\n- Échéancier et date de livraison :\n- Plans / validation technique :\n- Budget / soumission :\n\nMerci et bonne journée,\n\n{signature}",
+  },
+  {
+    id: "temporaire", nom: "Emploi temporaire (bar, service, événements)", cv: "barman",
+    objet: "Candidature, {poste} - Sylvain Brochu",
+    corps: "Bonjour{contact},\n\nJe vous propose ma candidature pour un poste de {poste}.\n\nJ'ai plus de 10 ans d'expérience au bar, en salle et en service événementiel à Montréal, du Parking au Club de Golf Métropolitain, et j'ai supervisé des équipes de service lors d'événements jusqu'à 1 500 invités.\n\nJe suis disponible rapidement. Mon CV est joint.\n\nCordialement,\n\n{signature}",
+  },
   {
     id: "offre", nom: "Candidature à une offre", cv: "carriere",
     objet: "Candidature, {poste} - Sylvain Brochu",
@@ -45,11 +85,6 @@ export const MODELES = [
     id: "disponibilites", nom: "Réponse : disponibilités pour une entrevue", cv: "",
     objet: "",
     corps: "Bonjour{contact},\n\nMerci pour votre retour. Je suis disponible aux moments suivants :\n\n- \n- \n- \n\nJe peux me déplacer ou faire la rencontre en visioconférence.\n\nAu plaisir,\n\n{signature}",
-  },
-  {
-    id: "temporaire", nom: "Emploi temporaire (bar, service, événements)", cv: "barman",
-    objet: "Candidature, {poste} - Sylvain Brochu",
-    corps: "Bonjour{contact},\n\nJe vous propose ma candidature pour un poste de {poste}.\n\nJ'ai plus de 10 ans d'expérience au bar, en salle et en service événementiel à Montréal, du Parking au Club de Golf Métropolitain, et j'ai supervisé des équipes de service lors d'événements jusqu'à 1 500 invités.\n\nJe suis disponible rapidement. Mon CV est joint.\n\nCordialement,\n\n{signature}",
   },
 ];
 
