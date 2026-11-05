@@ -28,7 +28,7 @@ const etat = {
   u: null, clientId: "", d: null, page: "tableau",
   stats: null, statsJours: 30, statsT: 0, offres: null, mail: null,
   boite: { dossier: "recus", listes: {}, ouvert: null, q: "" },
-  cvOnglet: "barman", filtre: "actifs", rech: "", profilOffres: "temporaire", rechOffres: "", journal: null,
+  cvOnglet: "carriere", filtre: "actifs", rech: "", profilOffres: "tous", rechOffres: "", journal: null,
   offresMaj: "", // "" | "en-cours" | "erreur" : mise à jour des offres en arrière-plan
   aRepondre: [], aRepondreT: 0, // courriels importants qui attendent ma réponse (api/rappels.js)
 };
@@ -149,15 +149,14 @@ function aFaire() {
   });
   (etat.d.candidatures || []).forEach((c) => {
     const r = relance(c); const ent = nomCourt(c);
-    const estTemp = c.type === "temporaire" || c.cv === "barman";
     if (c.entrevueLe && c.entrevueLe.slice(0, 10) >= auj) out.push({ type: "entrevue", c, tri: c.entrevueLe, texte: `Entrevue chez ${ent}`, detail: `Le ${dateCourte(c.entrevueLe)}${c.entrevueLe.length > 10 ? " à " + c.entrevueLe.slice(11, 16) : ""}. Relis l'offre et ta lettre avant.`, bouton: "Ouvrir" });
     if (c.reponseLe && !c.reponseTraitee && ACTIFS.includes(c.statut)) out.push({ type: "reponse", c, tri: c.reponseLe, texte: `${ent} t'a répondu`, detail: `Le ${dateCourte(c.reponseLe)}. La réponse est dans tes courriels.`, bouton: "Lire la réponse" });
-    if (r && r.enRetard && estTemp) out.push({ type: "relance", c, tri: r.due, texte: `Relancer ${ent}`, detail: `Tu as postulé le ${dateCourte(c.envoyeLe)}, sans réponse. Ton courriel de relance est prêt.`, bouton: "Préparer la relance" });
-    if (c.statut === "a_preparer" && estTemp) {
+    if (r && r.enRetard) out.push({ type: "relance", c, tri: r.due, texte: `Relancer ${ent}`, detail: `Tu as postulé le ${dateCourte(c.envoyeLe)}, sans réponse. Ton courriel de relance est prêt.`, bouton: "Préparer la relance" });
+    if (c.statut === "a_preparer") {
       const m = methode(c);
       out.push({ type: "postuler", c, tri: (c.echeance && c.echeance >= auj ? c.echeance : "9999") + (c.priorite || 3), texte: `Postuler chez ${ent}`, detail: `${c.poste ? posteCourt(c.poste) + ". " : ""}${m === "courriel" ? "Par courriel." : m === "site" ? "Sur le site de l'employeur." : ""}${c.echeance && c.echeance >= auj ? ` Date limite : ${dateCourte(c.echeance)}` : ""}`, bouton: "Postuler" });
     }
-    if (c.statut === "brouillon" && estTemp) out.push({ type: "brouillon", c, tri: "9" + (c.priorite || 3), texte: `Envoyer ta candidature chez ${ent}`, detail: "Ton courriel est déjà prêt avec ton CV joint. Relis-le et envoie-le.", bouton: "Relire et envoyer" });
+    if (c.statut === "brouillon") out.push({ type: "brouillon", c, tri: "9" + (c.priorite || 3), texte: `Envoyer ta candidature chez ${ent}`, detail: "Ton courriel est déjà prêt avec ton CV joint. Relis-le et envoie-le.", bouton: "Relire et envoyer" });
   });
   const ordre = { reservation: -1, repondre: -1, entrevue: 0, reponse: 1, relance: 2, postuler: 3, brouillon: 4 };
   return out.sort((a, b) => ordre[a.type] - ordre[b.type] || String(a.tri).localeCompare(String(b.tri)));
@@ -178,66 +177,12 @@ function site() {
   return modSite || (modSite = creerSite({ etat, E, $, api, toast, ouvrirModale, fermerModale, entete }));
 }
 
-// ---------- Espace nouveau poste Jack World ----------
-const JW_TACHES_DEFAUT = [
-  { id: "contrat", texte: "Recevoir et signer le contrat de travail et la lettre d'offre officielle (salaire 90 000 $, date d'entrée)", fait: false },
-  { id: "convention", texte: "Demander la convention / le manuel de l'employé et les politiques internes", fait: false },
-  { id: "horaire", texte: "Vérifier l'horaire type, la souplesse et le télétravail / déplacements Montréal - Saint-Jean", fait: false },
-  { id: "avantages", texte: "Vérifier les assurances collectives, semaines de vacances, REER et délai d'admissibilité", fait: false },
-  { id: "depenses", texte: "Clarifier le remboursement du kilométrage, des frais de chantier, cellulaire et bottes/EPI", fait: false },
-  { id: "documents", texte: "Préparer mes documents d'embauche : spécimen de chèque (dépôt direct), NAS, formulaires fiscaux, contact d'urgence", fait: false },
-  { id: "jour1", texte: "Confirmer l'heure d'arrivée du jour 1, la personne qui m'accueille, l'ordinateur/outils et mes premiers dossiers", fait: false },
-];
-const JW_MODELES_DEFAUT = [
-  {
-    id: "jw-questions", nom: "Jack World : questions (contrat, convention, entrée en poste)", cv: "",
-    objet: "Entrée en poste, chargé de projets - Sylvain Brochu",
-    corps: "Bonjour{contact},\n\nMerci encore pour votre confiance, je suis très heureux de me joindre à l'équipe de Jack World comme chargé de projets.\n\nPour bien préparer mon arrivée, pourriez-vous me transmettre :\n- Le contrat de travail / la convention ou le manuel de l'employé ;\n- Les détails sur les assurances collectives et la politique de remboursement des déplacements ;\n- La liste des documents administratifs à vous fournir (spécimen de chèque, formulaires fiscaux) ;\n- L'heure d'arrivée et le déroulement prévus pour ma première journée.\n\nAu plaisir de commencer avec vous,\n\n{signature}",
-  },
-  {
-    id: "jw-documents", nom: "Jack World : envoi de mes documents d'embauche", cv: "",
-    objet: "Documents d'embauche - Sylvain Brochu",
-    corps: "Bonjour{contact},\n\nVoici les documents et renseignements demandés pour mon dossier d'employé chez Jack World.\n\nN'hésitez pas s'il vous manque quoi que ce soit avant mon entrée en poste.\n\nBonne journée,\n\n{signature}",
-  },
-  {
-    id: "jw-suivi", nom: "Jack World : suivi de projet / fournisseur", cv: "",
-    objet: "Suivi de projet - Jack World",
-    corps: "Bonjour{contact},\n\nJe fais suite à notre échange concernant le projet en cours chez Jack World.\n\nVoici les points à confirmer de votre côté :\n- Échéancier et date de livraison :\n- Plans / validation technique :\n- Budget / soumission :\n\nMerci et bonne journée,\n\n{signature}",
-  },
-];
-
 // ---------- Démarrage ----------
 // Courriels factices lus par erreur sur certaines pages d'offres (ex. serviceomp@test957.com) : on les retire.
 function nettoyer() {
   const FAUX = /@(test\d*\.|example\.|exemple\.|domain\.)/i; let n = 0;
   (etat.d.candidatures || []).forEach((c) => { if (c.courriel && FAUX.test(c.courriel) && !c.envoyeLe) { c.courriel = ""; if (!c.formulaire && c.lien) c.formulaire = c.lien; n++; } });
-  const jwCand = (etat.d.candidatures || []).find((c) => c.id === "jackworld" || /jack\s*world/i.test(c.entreprise || ""));
-  if (jwCand && jwCand.statut !== "offre") {
-    jwCand.statut = "offre";
-    if (!jwCand.salaire) jwCand.salaire = "90 000 $ / an";
-    if (!jwCand.reponseLe) jwCand.reponseLe = jour();
-    noter(jwCand, "Emploi obtenu chez Jack World (90 000 $ / an) !");
-    n++;
-  }
   if (n) sauver("candidatures");
-  etat.d.reglages = etat.d.reglages || {};
-  const jw = etat.d.reglages.jackWorld || {};
-  etat.d.reglages.jackWorld = {
-    entreprise: jw.entreprise || "Jack World",
-    poste: jw.poste || "Chargé de projets (installations interactives, expériences immersives, mobilier urbain)",
-    ville: jw.ville || "Saint-Jean-sur-Richelieu",
-    salaire: jw.salaire || "90 000 $ / an",
-    courriel: jw.courriel || (jwCand && jwCand.courriel) || "recrutement@jackworldinc.com",
-    taches: Array.isArray(jw.taches) && jw.taches.length ? jw.taches : JW_TACHES_DEFAUT.map((x) => ({ ...x })),
-    notesConvention: typeof jw.notesConvention === "string" ? jw.notesConvention : "",
-    notesProjets: typeof jw.notesProjets === "string" ? jw.notesProjets : "",
-  };
-  etat.d.modeles = etat.d.modeles || [];
-  let modAjoutes = 0;
-  JW_MODELES_DEFAUT.slice().reverse().forEach((m) => {
-    if (!etat.d.modeles.some((x) => x.id === m.id)) { etat.d.modeles.unshift({ ...m }); modAjoutes++; }
-  });
-  if (modAjoutes) sauver("modeles");
 }
 async function demarrer() {
   try {
@@ -481,96 +426,6 @@ const barres = (liste, vide = "Aucune donnée pour cette période.") => {
 // ======================================================================
 // TABLEAU DE BORD
 // ======================================================================
-function blocJackWorld() {
-  const jw = etat.d.reglages?.jackWorld || {};
-  const taches = jw.taches || [];
-  const faits = taches.filter((t) => t.fait).length;
-  return `<section class="jw-carte">
-    <div class="jw-entete">
-      <div>
-        <span class="jw-badge">Nouveau poste obtenu !</span>
-        <h2>Félicitations pour ton emploi chez Jack World !</h2>
-        <p class="jw-sous">${E(jw.poste || "Chargé de projets")} | <b>${E(jw.salaire || "90 000 $ / an")}</b> | ${E(jw.ville || "Saint-Jean-sur-Richelieu")}</p>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn laiton" data-act="jw-courriel" data-mod="jw-questions">Questions contrat et convention</button>
-        <button type="button" class="btn" data-act="jw-courriel" data-mod="jw-documents">Envoyer mes documents</button>
-        <button type="button" class="btn" data-act="jw-courriel" data-mod="jw-suivi">Suivi projet / fournisseur</button>
-        <button type="button" class="btn" data-act="fiche" data-id="jackworld">Fiche Jack World</button>
-      </div>
-    </div>
-    <div class="jw-grille">
-      <div class="jw-col">
-        <div class="jw-col-tete">
-          <h3>Ce qu'il faut demander et faire rapidement</h3>
-          <span class="aide" id="jw-compte">${faits}/${taches.length} fait${faits > 1 ? "s" : ""}</span>
-        </div>
-        <ul class="jw-taches" id="jw-liste">
-          ${taches.map((t, i) => `<li class="${t.fait ? "fait" : ""}">
-            <label><input type="checkbox" data-jw-check="${i}" ${t.fait ? "checked" : ""}><span>${E(t.texte)}</span></label>
-            ${t.perso ? `<button type="button" class="jw-suppr" data-jw-suppr="${i}" title="Retirer" aria-label="Retirer">&times;</button>` : ""}
-          </li>`).join("")}
-        </ul>
-        <div class="jw-ajout">
-          <input type="text" id="jw-ajout-input" placeholder="Ajouter une question ou une chose à faire pour Jack World...">
-          <button type="button" class="btn petit" id="jw-ajout-btn">Ajouter</button>
-        </div>
-      </div>
-      <div class="jw-col">
-        <div class="jw-col-tete">
-          <h3>Mon carnet Jack World</h3>
-          <span class="aide">Enregistré automatiquement</span>
-        </div>
-        <label class="jw-bloc-note">
-          <span>La convention, mes conditions, horaire et infos RH</span>
-          <textarea id="jw-notes-conv" rows="4" placeholder="Note ici les règles de la convention, tes assurances, tes semaines de vacances, le remboursement du kilométrage, tes horaires...">${E(jw.notesConvention || "")}</textarea>
-        </label>
-        <label class="jw-bloc-note">
-          <span>Mes dossiers, collègues, fournisseurs et notes de projets</span>
-          <textarea id="jw-notes-proj" rows="4" placeholder="Note ici les noms de tes collègues, les projets en cours, les sous-traitants, ce que tu dois vérifier cette semaine...">${E(jw.notesProjets || "")}</textarea>
-        </label>
-      </div>
-    </div>
-  </section>`;
-}
-function brancherJackWorld() {
-  const jw = etat.d.reglages.jackWorld;
-  if (!jw) return;
-  $$("[data-jw-check]").forEach((cb) => {
-    cb.onchange = () => {
-      const i = Number(cb.dataset.jwCheck);
-      if (!jw.taches[i]) return;
-      jw.taches[i].fait = cb.checked;
-      cb.closest("li")?.classList.toggle("fait", cb.checked);
-      const faits = jw.taches.filter((t) => t.fait).length;
-      const cpt = $("#jw-compte"); if (cpt) cpt.textContent = `${faits}/${jw.taches.length} fait${faits > 1 ? "s" : ""}`;
-      sauver("reglages", 300);
-    };
-  });
-  $$("[data-jw-suppr]").forEach((btn) => {
-    btn.onclick = () => {
-      jw.taches.splice(Number(btn.dataset.jwSuppr), 1);
-      sauver("reglages", 200);
-      pTableau();
-    };
-  });
-  const inp = $("#jw-ajout-input"), btn = $("#jw-ajout-btn");
-  const ajouter = () => {
-    const txt = (inp?.value || "").trim();
-    if (!txt) return;
-    jw.taches.push({ id: uid(), texte: txt, fait: false, perso: true });
-    inp.value = "";
-    sauver("reglages", 200);
-    pTableau();
-  };
-  if (btn) btn.onclick = ajouter;
-  if (inp) inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); ajouter(); } };
-  const nc = $("#jw-notes-conv");
-  if (nc) nc.oninput = (e) => { jw.notesConvention = e.target.value; sauver("reglages", 700); };
-  const np = $("#jw-notes-proj");
-  if (np) np.oninput = (e) => { jw.notesProjets = e.target.value; sauver("reglages", 700); };
-}
-
 function pTableau() {
   const c = etat.d.candidatures || [];
   const envoyees = c.filter((x) => x.envoyeLe).length;
@@ -581,32 +436,30 @@ function pTableau() {
   const t0 = taches[0];
   const notes = typeof etat.d.notes === "string" ? etat.d.notes : "";
   const date = new Date().toLocaleDateString("fr-CA", { weekday: "long", day: "numeric", month: "long" });
-  $("#page").innerHTML = entete(`Bonjour ${E(prenom)}`, `${date[0].toUpperCase() + date.slice(1)}. ${taches.length ? `Tu as ${taches.length} chose${taches.length > 1 ? "s" : ""} à faire.` : "Tout est à jour."}`,
+  $("#page").innerHTML = entete(`Bonjour ${E(prenom)}`, `${date[0].toUpperCase() + date.slice(1)}. ${taches.length ? `Tu as ${taches.length} chose${taches.length > 1 ? "s" : ""} à faire.` : "Rien d'urgent aujourd'hui."}`,
     `<a class="btn" href="/" target="_blank" rel="noopener">Voir le site</a>`) + `
-  ${blocJackWorld()}
-  <div id="d-mails"></div>
   <section class="prochaine">
-    <span class="etiquette">${t0 ? "Ta prochaine étape" : "Extras, bar, service et créations"}</span>
+    <span class="etiquette">Ta prochaine étape</span>
     ${t0 ? `<h2>${E(t0.texte)}</h2><p>${E(t0.detail)}</p><div class="actions">${boutonTache(t0, true)}</div>`
-      : `<h2>Offres temporaires (bar, service, événements) et boutique Onomiko</h2><p>Les offres d'extra en bar, service et événementiel restent cherchées pour toi chaque jour, et toutes tes candidatures sont conservées.</p><div class="actions"><a class="btn laiton grand" href="#offres">Voir les offres temporaires</a><a class="btn grand" href="#boutique">Ma boutique Onomiko</a></div>`}
+      : `<h2>Choisis une offre qui te plaît</h2><p>De nouvelles offres sont cherchées pour toi chaque jour. Clique « Postuler » sur celle qui t'intéresse : ta lettre et ton CV sont prêts.</p><div class="actions"><a class="btn laiton grand" href="#offres">Voir les offres</a></div>`}
   </section>
+  <div id="d-mails"></div>
   ${commentPostuler()}
   <div class="grille g2">
-    <section class="carte"><header><h2>Suivis et tâches</h2><a class="btn petit" href="#candidatures">Mes candidatures</a></header>
-      ${taches.length > 1 ? `<ul class="liste taches">${taches.slice(1, 6).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>${taches.length > 6 ? `<p class="aide plus">Et ${taches.length - 6} autre${taches.length - 6 > 1 ? "s" : ""} dans <a href="#candidatures">Mes candidatures</a>.</p>` : ""}` : `<p class="vide">Aucun suivi urgent pour l'instant.</p>`}
+    <section class="carte"><header><h2>Ensuite</h2><a class="btn petit" href="#candidatures">Mes candidatures</a></header>
+      ${taches.length > 1 ? `<ul class="liste taches">${taches.slice(1, 6).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>${taches.length > 6 ? `<p class="aide plus">Et ${taches.length - 6} autre${taches.length - 6 > 1 ? "s" : ""} dans <a href="#candidatures">Mes candidatures</a>.</p>` : ""}` : `<p class="vide">Rien d'autre pour l'instant.</p>`}
     </section>
-    <section class="carte"><header><h2>Offres temporaires (bar et événements)</h2><a class="btn petit" href="#offres">Toutes les offres</a></header><div id="d-offres"><p class="vide">Recherche des offres...</p></div></section>
+    <section class="carte"><header><h2>Nouvelles offres</h2><a class="btn petit" href="#offres">Toutes les offres</a></header><div id="d-offres"><p class="vide">Recherche des offres...</p></div></section>
   </div>
   <div class="chiffres">
     <div><b>${envoyees}</b><span>candidature${envoyees > 1 ? "s" : ""} envoyée${envoyees > 1 ? "s" : ""}</span></div>
     <div><b>${reponses}</b><span>réponse${reponses > 1 ? "s" : ""} reçue${reponses > 1 ? "s" : ""}</span></div>
-    <div><b>${entrevues}</b><span>entrevue${entrevues > 1 ? "s" : ""} et offre</span></div>
+    <div><b>${entrevues}</b><span>entrevue${entrevues > 1 ? "s" : ""}</span></div>
     <div><b id="k-vis">-</b><span>visiteurs sur ton site, 30 jours</span></div>
     <div><b id="k-cv">-</b><span>CV téléchargés, 30 jours</span></div>
   </div>
-  <details class="carte notes-carte" ${notes.trim() ? "open" : ""}><summary><h2>Autres notes personnelles</h2><span class="aide">Enregistrées automatiquement</span></summary>
+  <details class="carte notes-carte" ${notes.trim() ? "open" : ""}><summary><h2>Notes</h2><span class="aide">Enregistrées automatiquement</span></summary>
     <textarea class="notes-libres" id="notes" placeholder="Contacts à appeler, idées, suivis...">${E(notes)}</textarea></details>`;
-  brancherJackWorld();
   $("#notes").oninput = (e) => { etat.d.notes = e.target.value; sauver("notes", 900); };
   const me = $(".mode-emploi"); if (me) me.ontoggle = () => { try { localStorage.setItem("sb-mode-emploi", me.open ? "ouvert" : "ferme"); } catch { /* stockage indisponible */ } };
   chargerStats(30).then((s) => {
@@ -626,11 +479,9 @@ function offresAccueil() {
   const masq = new Set(etat.d["offres-masquees"] || []);
   const liees = new Set((etat.d.candidatures || []).map((c) => c.lien).filter(Boolean));
   const dispo = etat.offres.offres.filter((x) => !masq.has(x.id) && !liees.has(x.url));
-  const tempDispo = dispo.filter((x) => x.profil === "temporaire");
-  const base = tempDispo.length ? tempDispo : dispo.filter((x) => !sous60(x));
-  const neuves = trierOffres(base.filter((x) => estNouvelle(x)));
-  const l = (neuves.length ? neuves : trierOffres(base)).slice(0, 5);
-  el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} offre${neuves.length > 1 ? "s" : ""} depuis ta dernière visite.</p>` : `<p class="aide">Offres récentes en bar, service et événements :</p>`)
+  const neuves = trierOffres(dispo.filter((x) => estNouvelle(x) && !sous60(x)));
+  const l = (neuves.length ? neuves : trierOffres(dispo.filter((x) => !sous60(x)))).slice(0, 5);
+  el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} depuis ta dernière visite.</p>` : `<p class="aide">Pas de nouvelle offre depuis ta dernière visite. Les plus intéressantes :</p>`)
     + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : salaireCourt(x) || "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Postuler</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
 }
 function commentPostuler() {
@@ -1164,16 +1015,16 @@ const SITES = [
   ["Hôtellerie Jobs", (q) => `https://www.hotelleriejobs.com/fr/jobs?search=${encodeURIComponent(q)}`],
 ];
 function pOffres() {
-  $("#page").innerHTML = entete("Offres d'emploi", "Les offres temporaires (bar, service, banquets et événements) sont mises de l'avant pour toi. Les offres en production et toutes les recherches restent aussi accessibles.",
+  $("#page").innerHTML = entete("Offres d'emploi", "Des offres en production, en événementiel et en bar ou service, cherchées pour toi chaque jour sur près de 40 sites d'emploi et pages carrières d'employeurs du grand Montréal. Clique « Postuler » sur celle qui t'intéresse.",
     `<button class="btn" data-act="ajouter-offre">Ajouter une offre trouvée ailleurs</button><button class="btn" data-act="rafraichir-offres">Chercher maintenant</button>`) + `
   <div class="filtres" id="filtres-off"></div>
-  <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot (bar, service, événement...)" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
+  <div class="barre-outils"><input class="recherche" type="search" id="rech-off" placeholder="Filtrer par mot (production, bar...)" value="${E(etat.rechOffres)}"><span class="aide" id="etat-off"></span></div>
   <div class="offres" id="liste-off"><p class="vide"><span class="tourne"></span> Recherche des offres...</p></div>
   <details class="carte plus-loin" id="det-carte"><summary><h2>Voir les offres sur la carte</h2><span class="aide" id="geo-etat"></span></summary>
     <div id="carte-off" class="carte-geo" role="region" aria-label="Carte des offres d'emploi"></div>
-    <p class="aide legende"><span class="pt pt-t"></span> Bar et service <span class="pt pt-c"></span> Carrière <span class="pt pt-v"></span> Pâle : position de la ville (adresse pas encore trouvée)</p></details>
-  <details class="carte plus-loin"><summary><h2>Chercher toi-même sur d'autres sites</h2><span class="aide">Indeed, LinkedIn, Guichet-Emplois, Hôtellerie Jobs</span></summary>
-    <div class="liens-rapides">${["temporaire", "carriere"].map((p) => `<div class="groupe"><h4>${p === "carriere" ? "Carrière" : "Bar, service et événements"}</h4>${RECHERCHES[p].map((q) => `<div style="margin-bottom:6px"><b style="font-size:.84rem">${E(q)}</b><br>${SITES.filter(([n]) => p === "temporaire" || n !== "Hôtellerie Jobs").map(([n, f]) => `<a href="${E(f(q))}" target="_blank" rel="noopener" style="display:inline;margin-right:8px">${n}</a>`).join("")}</div>`).join("")}</div>`).join("")}</div>
+    <p class="aide legende"><span class="pt pt-c"></span> Carrière <span class="pt pt-t"></span> Bar et service <span class="pt pt-v"></span> Pâle : position de la ville (adresse pas encore trouvée)</p></details>
+  <details class="carte plus-loin"><summary><h2>Chercher toi-même sur d'autres sites</h2><span class="aide">Indeed, LinkedIn, Guichet-Emplois</span></summary>
+    <div class="liens-rapides">${["carriere", "temporaire"].map((p) => `<div class="groupe"><h4>${p === "carriere" ? "Carrière" : "Bar et service"}</h4>${RECHERCHES[p].map((q) => `<div style="margin-bottom:6px"><b style="font-size:.84rem">${E(q)}</b><br>${SITES.filter(([n]) => p === "temporaire" || n !== "Hôtellerie Jobs").map(([n, f]) => `<a href="${E(f(q))}" target="_blank" rel="noopener" style="display:inline;margin-right:8px">${n}</a>`).join("")}</div>`).join("")}</div>`).join("")}</div>
     <p class="aide" style="margin-top:10px">Indeed et LinkedIn ne laissent pas lire leurs offres automatiquement : ces liens ouvrent leurs recherches, les plus récentes d'abord. Si tu trouves une offre, « Ajouter une offre trouvée ailleurs ».</p></details>
   <details class="carte plus-loin"><summary><h2>Les sites lus</h2><span class="aide" id="sources-resume"></span></summary><div id="sources-off"><p class="vide">Chargement...</p></div></details>
   <details class="carte plus-loin"><summary><h2>Tes profils sur les sites d'emploi</h2><span class="aide">${(etat.d.plateformes || []).filter((p) => p.profilCree).length}/${(etat.d.plateformes || []).length} faits</span></summary>
@@ -1194,7 +1045,7 @@ async function listerOffres(masq = new Set(etat.d["offres-masquees"] || []), for
   afficherEtatOffres();
   const sauvees = (etat.d["offres-sauvees"] || []).map((x) => ({ ...x, sauvee: true, sal: x.sal || null }));
   const toutes = [...sauvees, ...o.offres.filter((x) => !masq.has(x.id))];
-  const FILTRES = [["temporaire", "Bar et service", (x) => x.profil === "temporaire"], ["tous", "Toutes", (x) => !sous60(x)], ["nouvelles", "Nouvelles", (x) => estNouvelle(x) && !sous60(x)], ["carriere", "Carrière", (x) => x.profil === "carriere" && !sous60(x)], ["sauvees", "Ajoutées à la main", (x) => x.sauvee]];
+  const FILTRES = [["tous", "Toutes", (x) => !sous60(x)], ["nouvelles", "Nouvelles", (x) => estNouvelle(x) && !sous60(x)], ["carriere", "Carrière", (x) => x.profil === "carriere" && !sous60(x)], ["temporaire", "Bar et service", (x) => x.profil === "temporaire"], ["sauvees", "Ajoutées à la main", (x) => x.sauvee]];
   const f = FILTRES.find((x) => x[0] === etat.profilOffres) || FILTRES[0];
   $("#filtres-off").innerHTML = FILTRES.map(([k, n, fn]) => `<button type="button" data-profil="${k}" aria-pressed="${k === f[0]}">${n} <b>${toutes.filter(fn).length}</b></button>`).join("");
   const q = etat.rechOffres.toLowerCase();
@@ -1501,17 +1352,6 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.jours) { etat.statsJours = Number(t.dataset.jours); return pStats(); }
   const a = t.dataset.act; const cand = t.dataset.id ? etat.d.candidatures.find((x) => x.id === t.dataset.id) : null;
   switch (a) {
-    case "jw-courriel": {
-      const jw = etat.d.reglages?.jackWorld || {};
-      const jwCand = (etat.d.candidatures || []).find((x) => x.id === "jackworld");
-      const m = (etat.d.modeles || []).find((x) => x.id === t.dataset.mod);
-      return ouvrirComposeur({
-        a: jw.courriel || jwCand?.courriel || "recrutement@jackworldinc.com",
-        sujet: m ? remplir(m.objet, jwCand || { entreprise: "Jack World", poste: "Chargé de projets" }) : "Suivi - Sylvain Brochu",
-        texte: m ? remplir(m.corps, jwCand || { entreprise: "Jack World", poste: "Chargé de projets" }) : `Bonjour,\n\n\n\n${etat.d.reglages.signature || ""}`,
-        piece: "",
-      });
-    }
     case "nouveau-courriel": return ouvrirComposeur({ piece: "" });
     case "nouvelle": return ficheCandidature({ id: uid(), statut: "a_preparer", type: "offre", cv: "carriere", priorite: 2, historique: [] }, true);
     case "fiche": return cand && ficheCandidature(cand);

@@ -433,36 +433,3 @@ select option { background: #fff; color: var(--texte); }
 .st-ordre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; font-size: .88rem; color: var(--doux); }
 .st-ordre span { margin-right: 4px; }
 .btn[aria-pressed="true"] { background: var(--nuit); color: var(--ivoire); border-color: var(--nuit); }
-
-/* ---------- Espace nouveau poste Jack World ---------- */
-.jw-carte { background: var(--nuit); color: var(--ivoire); border: 1px solid rgba(200,162,107,.45); border-radius: var(--r); padding: 20px 22px; margin-bottom: 16px; box-shadow: var(--ombre); }
-.jw-entete { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px 20px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,253,249,.12); margin-bottom: 16px; }
-.jw-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; background: rgba(200,162,107,.22); color: var(--laiton); font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
-.jw-entete h2 { margin: 0 0 4px; font: 700 clamp(1.45rem, 2.2vw, 1.9rem)/1.05 var(--display); text-transform: uppercase; letter-spacing: .03em; color: var(--ivoire); }
-.jw-sous { margin: 0; color: rgba(244,239,230,.82); font-size: .95rem; }
-.jw-sous b { color: var(--laiton); }
-.jw-entete .btn:not(.laiton) { background: rgba(255,253,249,.09); color: var(--ivoire); border-color: rgba(255,253,249,.22); }
-.jw-entete .btn:not(.laiton):hover { background: rgba(255,253,249,.18); }
-.jw-grille { display: grid; grid-template-columns: 1.05fr .95fr; gap: 18px; align-items: start; }
-.jw-col { background: rgba(255,253,249,.04); border: 1px solid rgba(255,253,249,.1); border-radius: 6px; padding: 14px 16px; }
-.jw-col-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.jw-col-tete h3 { margin: 0; font: 700 1.08rem/1.1 var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--laiton); }
-.jw-col-tete .aide { color: rgba(244,239,230,.62); }
-.jw-taches { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
-.jw-taches li { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 5px; background: rgba(23,21,26,.45); border: 1px solid rgba(255,253,249,.07); font-size: .9rem; line-height: 1.38; }
-.jw-taches li label { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; flex: 1; }
-.jw-taches li input[type="checkbox"] { margin-top: 3px; accent-color: var(--laiton); width: 16px; height: 16px; flex-shrink: 0; }
-.jw-taches li.fait span { text-decoration: line-through; color: rgba(244,239,230,.48); }
-.jw-suppr { border: 0; background: transparent; color: rgba(244,239,230,.55); cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 0 4px; }
-.jw-suppr:hover { color: #f5b3a8; }
-.jw-ajout { display: flex; gap: 8px; margin-top: 10px; }
-.jw-ajout input { flex: 1; background: rgba(23,21,26,.65); border: 1px solid rgba(255,253,249,.2); border-radius: 5px; color: var(--ivoire); padding: 7px 10px; font: inherit; font-size: .88rem; }
-.jw-ajout input::placeholder { color: rgba(244,239,230,.45); }
-.jw-ajout .btn { background: rgba(200,162,107,.22); color: var(--laiton); border-color: rgba(200,162,107,.45); }
-.jw-ajout .btn:hover { background: var(--laiton); color: var(--nuit); }
-.jw-bloc-note { display: grid; gap: 5px; margin-bottom: 10px; font-size: .86rem; color: rgba(244,239,230,.85); font-weight: 500; }
-.jw-bloc-note:last-child { margin-bottom: 0; }
-.jw-bloc-note textarea { width: 100%; background: rgba(23,21,26,.65); border: 1px solid rgba(255,253,249,.18); border-radius: 5px; color: var(--ivoire); padding: 9px 11px; font: inherit; font-size: .9rem; line-height: 1.45; resize: vertical; }
-.jw-bloc-note textarea::placeholder { color: rgba(244,239,230,.42); }
-.jw-bloc-note textarea:focus, .jw-ajout input:focus { outline: none; border-color: var(--laiton); }
-@media (max-width: 920px) { .jw-grille { grid-template-columns: 1fr; } }

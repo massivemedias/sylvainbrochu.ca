@@ -65,8 +65,8 @@ export const CANDIDATURES = [
   "entreprise": "Jack World",
   "poste": "Chargé de projets (installations interactives, expériences immersives, mobilier urbain)",
   "ville": "Saint-Jean-sur-Richelieu",
-  "contrat": "Permanent, temps plein",
-  "salaire": "90 000 $ / an",
+  "contrat": "Temps plein",
+  "salaire": "",
   "type": "offre",
   "priorite": 1,
   "echeance": "",
@@ -74,23 +74,19 @@ export const CANDIDATURES = [
   "lien": "https://ca.linkedin.com/jobs/view/charg%C3%A9-de-projets-at-jack-world-4481595896",
   "formulaire": "",
   "cv": "carriere",
-  "statut": "offre",
+  "statut": "brouillon",
   "objet": "Candidature, chargé de projets - Sylvain Brochu",
   "texte": "Bonjour,\n\nJe vous propose ma candidature au poste de chargé de projets chez Jack World.\n\nPendant dix ans, j'ai dirigé Even Even Design, une entreprise de fabrication sur mesure de luminaires d'envergure et de pièces uniques pour l'hôtellerie, des résidences, des événements, la télévision et le théâtre. Je gérais chaque projet du besoin du client jusqu'à l'installation : conception, échéancier, budget et un réseau de sous-traitants spécialisés (soudeurs, découpe CNC, souffleurs de verre, imprimeurs, monteurs). Pour l'hôtel-boutique Maison Grinder, à Montréal, nous avons réalisé et installé une centaine de luminaires.\n\nJ'ai ensuite été gestionnaire des opérations du centre Never Apart pendant neuf ans, avec plus de 35 expositions livrées. J'ai aussi passé huit ans au Cirque du Soleil, dont quatre en tournée internationale, et en 2026, j'étais responsable des accessoires du spectacle du Grand Prix de Formule 1.\n\nDes installations fabriquées sur mesure puis installées chez le client, c'est le type de projet que je connais le mieux. Je travaille en français et en anglais.\n\nMon CV est joint, et mes projets sont présentés sur mon site. J'aimerais beaucoup en discuter avec vous.\n\nCordialement,",
   "pourquoi": "Fabrication sur mesure d'installations, du besoin du client à l'installation, avec des sous-traitants : c'est exactement Even Even Design. À Saint-Jean, comme demandé. Point faible : le diplôme en génie ou en gestion.",
   "note": "Atelier de 35 000 pi², environ 40 employés. Demandé : DEC ou bac en génie ou en gestion, 5 ans en construction ou fabrication sur mesure, bilingue. Certification PMI : atout.",
-  "envoyeLe": "2026-10-28",
+  "envoyeLe": "",
   "relanceLe": "",
-  "reponseLe": "2026-11-03",
+  "reponseLe": "",
   "entrevueLe": "",
   "historique": [
    {
     "date": "2026-10-28",
     "texte": "Fiche créée et brouillon Gmail préparé"
-   },
-   {
-    "date": "2026-11-03",
-    "texte": "Emploi obtenu chez Jack World (90 000 $ / an) !"
    }
   ]
  },
