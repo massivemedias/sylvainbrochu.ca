@@ -669,6 +669,7 @@ function pTableau() {
       ${taches.length > 1 ? `<ul class="liste taches">${taches.slice(1, 6).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>${taches.length > 6 ? `<p class="aide plus">Et ${taches.length - 6} autre${taches.length - 6 > 1 ? "s" : ""} dans <a href="#candidatures">Mes candidatures</a>.</p>` : ""}` : `<p class="vide">Rien d'autre pour l'instant.</p>`}
     </section>
   </div>
+  ${laMethode()}
   ${commentPostuler()}
   <div class="chiffres">
     <div><b>${envoyees}</b><span>candidature${envoyees > 1 ? "s" : ""} envoyée${envoyees > 1 ? "s" : ""}</span></div>
@@ -682,6 +683,7 @@ function pTableau() {
 
   $("#notes").oninput = (e) => { etat.d.notes = e.target.value; sauver("notes", 900); };
   const me = $(".mode-emploi"); if (me) me.ontoggle = () => { try { localStorage.setItem("sb-mode-emploi", me.open ? "ouvert" : "ferme"); } catch { /* */ } };
+  const md = $(".methode"); if (md) md.ontoggle = () => { try { localStorage.setItem("sb-methode", md.open ? "ouvert" : "ferme"); } catch { /* */ } };
   chargerStats(30).then((s) => {
     if (etat.page !== "tableau") return;
     $("#k-vis").textContent = s.totaux.visiteurs; $("#k-cv").textContent = s.totaux.cv;
@@ -710,6 +712,19 @@ function offresAccueil() {
   const l = (neuves.length ? neuves : trierOffres(dispo.filter((x) => !sous60(x)))).slice(0, 5);
   el.innerHTML = (neuves.length ? `<p class="aide">${neuves.length} nouvelle${neuves.length > 1 ? "s" : ""} depuis ta dernière visite.</p>` : `<p class="aide">Pas de nouvelle offre depuis ta dernière visite. Les plus intéressantes :</p>`)
     + (l.length ? `<ul class="liste">${l.map((x) => `<li><div class="t"><b>${E(x.titre)}</b><small>${E(x.entreprise || "")}${x.lieu ? " | " + E(x.lieu) : ""} | ${x.profil === "temporaire" ? "Bar et service" : salaireCourt(x) || "Carrière"}</small></div><div class="actions"><button class="btn petit laiton" data-act="offre-vers-cand" data-oid="${x.id}">Postuler</button></div></li>`).join("")}</ul>` : `<p class="vide">Aucune offre pour l'instant.</p>`);
+}
+function laMethode() {
+  let ferme = false; try { ferme = localStorage.getItem("sb-methode") === "ferme"; } catch { /* stockage indisponible */ }
+  return `<details class="carte methode" ${ferme ? "" : "open"}>
+    <summary><h2>La méthode : postuler en masse</h2><span class="aide">Le volume paie, pas la perle rare</span></summary>
+    <p class="methode-intro">Un refus n'est jamais contre toi. Ça joue sur le salaire, le timing, mille raisons qui ne te regardent pas. La seule règle : postuler partout où tu veux vivre et travailler, beaucoup, sans attendre. Ça finit toujours par accrocher.</p>
+    <ol class="methode-liste">
+      <li><b>Vise 15 à 20 candidatures par semaine.</b> Ouvre <a href="#offres">Offres d'emploi</a> et clique « Postuler » sur tout ce qui te parle. Ta lettre et ton CV sont déjà prêts.</li>
+      <li><b>Relance, puis appelle.</b> Dans <a href="#candidatures">Mes candidatures</a>, « Relancer » apparaît tout seul après quelques jours. Appelle aussi pour confirmer qu'ils ont bien reçu ton dossier.</li>
+      <li><b>Présente-toi en personne.</b> Pour un endroit qui te tient à coeur : CV imprimé sur beau papier, ton plus beau look, demande les ressources humaines et laisse ton CV à la réception. Il finira entre leurs mains.</li>
+    </ol>
+    <p class="aide methode-mail">Ton courriel info@sylvainbrochu.ca est réparé : les réponses arrivent bien.</p>
+  </details>`;
 }
 function commentPostuler() {
   let ferme = false; try { ferme = localStorage.getItem("sb-mode-emploi") === "ferme"; } catch { /* stockage indisponible */ }

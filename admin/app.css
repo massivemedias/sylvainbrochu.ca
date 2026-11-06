@@ -445,3 +445,10 @@ select option { background: #fff; color: var(--texte); }
 .tag-sens.recu { background: rgba(200,162,107,.18); color: #d6b37a; }
 .tag-sens.envoye { background: rgba(240,235,225,.1); color: #cfc6ba; }
 .ico-sync { display: inline-block; font-size: 1.1rem; line-height: 1; vertical-align: -1px; margin-right: 4px; }
+
+/* Tableau : La méthode (postuler en masse) */
+.methode .methode-intro { margin: 2px 0 12px; font-size: .98rem; line-height: 1.5; }
+.methode-liste { margin: 0; padding-left: 22px; display: grid; gap: 9px; }
+.methode-liste li { line-height: 1.45; }
+.methode-liste li b { font-weight: 650; }
+.methode-mail { margin: 12px 0 2px; }
