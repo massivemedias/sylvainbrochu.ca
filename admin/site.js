@@ -83,6 +83,7 @@ export function creerSite(ctx) {
       <div class="st-liens">
         <a class="btn petit" href="${E(urlPage(s.chemin))}" target="_blank" rel="noopener">Voir en ligne</a>
         ${jumelle ? `<button class="btn petit" data-st="jumelle">${s.chemin.startsWith("en/") ? "Version française" : "Version anglaise"}</button>` : ""}
+        <button class="btn petit" data-st="menu">Ordre du menu</button>
         <button class="btn petit" data-st="google">Titre et description Google</button>
         <button class="btn petit" data-st="zones" aria-pressed="${s.zones ? "true" : "false"}">${s.zones ? "Cacher les zones modifiables" : "Montrer ce qui se modifie"}</button>
       </div>
@@ -406,6 +407,127 @@ export function creerSite(ctx) {
   }
 
   // ---------- Titre et description Google ----------
+  // ---------- Ordre du menu ----------
+  // Le menu est le même sur les ~77 pages du site. Ici on le réorganise une fois,
+  // et « Publier le menu » l'applique partout, en français et en anglais d'un coup.
+  async function ordreMenu() {
+    let entrees;
+    try { entrees = (await api("/api/site/?action=menu")).entrees; }
+    catch (e) { return toast("Menu impossible à ouvrir : " + e.message, true); }
+    const depart = JSON.stringify(entrees);
+    let envoi = false;
+
+    ouvrirModale("Ordre du menu", `
+      <p class="aide">Glisse une ligne, ou utilise les flèches, pour changer l'ordre des onglets. Le même ordre est appliqué au menu français et au menu anglais, sur toutes les pages de ton site.</p>
+      <div class="mn-apercu" id="mn-apercu"></div>
+      <ul class="mn-liste" id="mn-liste"></ul>
+      <p class="aide">Un onglet masqué disparaît du menu et du bas de page, mais la page reste en ligne et garde son adresse.</p>
+      <p class="aide mn-envoi" hidden><span class="tourne"></span> Mise à jour de toutes les pages du site...</p>`,
+    `<button class="btn" data-mn="annuler">Annuler</button>
+     <button class="btn laiton" data-mn="publier">Publier le menu</button>`,
+    (m) => {
+      const liste = $("#mn-liste", m);
+
+      const dessinerApercu = () => {
+        $("#mn-apercu", m).innerHTML = `<span class="mn-mark">Sylvain Brochu</span>` +
+          entrees.filter((e) => !e.cache).map((e) => `<span>${E(e.fr.libelle)}</span>`).join("") +
+          `<span class="mn-lang">EN</span>`;
+      };
+
+      const dessiner = () => {
+        liste.innerHTML = entrees.map((e, i) => `
+          <li class="mn-ligne${e.cache ? " cache" : ""}" draggable="true" data-i="${i}">
+            <span class="mn-prise" aria-hidden="true">&#10303;</span>
+            <div class="mn-flex">
+              <div class="mn-noms">
+                <label><span>Français</span><input type="text" maxlength="40" data-mn-fr="${i}" value="${E(e.fr.libelle)}"></label>
+                <label><span>Anglais</span><input type="text" maxlength="40" data-mn-en="${i}" value="${E(e.en.libelle)}"></label>
+              </div>
+              <span class="mn-url">${E(e.fr.href)}</span>
+            </div>
+            <div class="mn-boutons">
+              <button type="button" class="btn petit" data-mn-haut="${i}" ${i === 0 ? "disabled" : ""} aria-label="Monter cet onglet">&uarr;</button>
+              <button type="button" class="btn petit" data-mn-bas="${i}" ${i === entrees.length - 1 ? "disabled" : ""} aria-label="Descendre cet onglet">&darr;</button>
+              <button type="button" class="btn petit" data-mn-voir="${i}">${e.cache ? "Afficher" : "Masquer"}</button>
+            </div>
+          </li>`).join("");
+        dessinerApercu();
+      };
+
+      const bouger = (de, vers) => {
+        if (vers < 0 || vers >= entrees.length || de === vers) return;
+        entrees.splice(vers, 0, entrees.splice(de, 1)[0]);
+        dessiner();
+      };
+
+      liste.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-mn-haut], button[data-mn-bas], button[data-mn-voir]");
+        if (!b) return;
+        e.preventDefault();
+        if (b.hasAttribute("data-mn-haut")) { const i = +b.getAttribute("data-mn-haut"); return bouger(i, i - 1); }
+        if (b.hasAttribute("data-mn-bas")) { const i = +b.getAttribute("data-mn-bas"); return bouger(i, i + 1); }
+        const i = +b.getAttribute("data-mn-voir");
+        if (!entrees[i].cache && entrees.filter((x) => !x.cache).length <= 1) return toast("Garde au moins un onglet visible.", true);
+        entrees[i].cache = !entrees[i].cache; dessiner();
+      });
+
+      liste.addEventListener("input", (e) => {
+        const c = e.target;
+        if (c.hasAttribute("data-mn-fr")) entrees[+c.getAttribute("data-mn-fr")].fr.libelle = c.value;
+        else if (c.hasAttribute("data-mn-en")) entrees[+c.getAttribute("data-mn-en")].en.libelle = c.value;
+        else return;
+        dessinerApercu();
+      });
+
+      // Glisser-déposer à la souris ; les flèches font le même travail au doigt.
+      let tire = null;
+      liste.addEventListener("dragstart", (e) => {
+        const li = e.target.closest(".mn-ligne"); if (!li) return;
+        tire = +li.getAttribute("data-i"); li.classList.add("tire");
+        e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(tire));
+      });
+      liste.addEventListener("dragover", (e) => {
+        if (tire === null) return;
+        e.preventDefault();
+        const li = e.target.closest(".mn-ligne"); if (!li) return;
+        liste.querySelectorAll(".survol").forEach((x) => x.classList.remove("survol"));
+        li.classList.add("survol");
+      });
+      liste.addEventListener("drop", (e) => {
+        if (tire === null) return;
+        e.preventDefault();
+        const li = e.target.closest(".mn-ligne");
+        const vers = li ? +li.getAttribute("data-i") : null;
+        const de = tire; tire = null;
+        if (vers === null || vers === de) return dessiner();
+        bouger(de, vers);
+      });
+      liste.addEventListener("dragend", () => { if (tire !== null) { tire = null; dessiner(); } });
+
+      $('[data-mn="annuler"]', m).onclick = () => fermerModale();
+      $('[data-mn="publier"]', m).onclick = async () => {
+        if (envoi) return;
+        if (entrees.some((e) => !e.fr.libelle.trim() || !e.en.libelle.trim())) return toast("Un nom d'onglet est vide.", true);
+        if (JSON.stringify(entrees) === depart) { fermerModale(); return toast("Rien n'a changé dans le menu."); }
+        envoi = true;
+        $(".mn-envoi", m).hidden = false;
+        $('[data-mn="publier"]', m).disabled = true; $('[data-mn="annuler"]', m).disabled = true;
+        try {
+          const r = await api("/api/site/?action=menu", { method: "POST", body: { entrees } });
+          fermerModale();
+          toast(r.rien ? "Le menu était déjà comme ça." : `Menu publié sur ${r.pages} page${r.pages > 1 ? "s" : ""}. Ton site sera à jour dans environ une minute.`);
+          if (!r.rien) { s.pages = null; s.doc = null; page(); }
+        } catch (e) {
+          toast(e.code === "REFUS" ? e.message : "Menu pas publié : " + e.message, true);
+          envoi = false; $(".mn-envoi", m).hidden = true;
+          $('[data-mn="publier"]', m).disabled = false; $('[data-mn="annuler"]', m).disabled = false;
+        }
+      };
+
+      dessiner();
+    });
+  }
+
   function reglagesGoogle() {
     const doc = s.doc;
     const titre = doc.querySelector("title"), desc = doc.querySelector('meta[name="description"]');
@@ -518,6 +640,7 @@ export function creerSite(ctx) {
     if (a === "publier") publier();
     if (a === "annuler") annuler();
     if (a === "google") reglagesGoogle();
+    if (a === "menu") ordreMenu();
     if (a === "compris") { try { localStorage.setItem("sb-site-guide", "vu"); } catch { /* sans mémoire */ } t.closest(".st-guide")?.remove(); }
     if (a === "zones") {
       s.zones = !s.zones;

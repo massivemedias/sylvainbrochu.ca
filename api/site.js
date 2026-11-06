@@ -4,12 +4,16 @@
 //   GET  ?action=page&chemin=<f>      code HTML d'une page + son empreinte (sha)
 //   POST ?action=photo                { chemin, donnees: dataURL } : envoie une photo, renvoie son empreinte
 //   POST ?action=publier              { fichiers: [{ chemin, contenu, sha }], photos: [{ chemin, sha }], message }
+//   GET  ?action=menu                 l'ordre et les noms des onglets du menu (FR et EN ensemble)
+//   POST ?action=menu                 { entrees } : applique le menu aux ~77 pages du site, en un seul commit
 // Publier = un commit sur la branche main du dépôt ; Vercel remet le site en ligne tout seul (environ une minute).
 // Sans jeton GitHub mais en local (SB_LOCAL=1), les pages sont lues et écrites dans un dossier (SB_SITE_DIR).
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { exiger } from "./_lib/auth.js";
+import { lireJSON, ecrireJSON } from "./_lib/kv.js";
+import { entreesDepuisHtml, fusionner, reecrirePage, verifier } from "./_lib/menu.js";
 import { corps, erreur, json, parametres } from "./_lib/util.js";
 
 const DEPOT = process.env.GITHUB_REPO || "massivemedias/sylvainbrochu.ca";
@@ -21,6 +25,8 @@ const DOSSIER_LOCAL = process.env.SB_SITE_DIR || process.cwd();
 // Pages qu'on ne modifie pas ici : l'admin, les fonctions, et les fiches de la boutique (remplies par « Ma boutique »).
 const EXCLUS = /^(admin|api|node_modules|outils|\.)|^(onomiko\/boutique|en\/onomiko\/shop)\/(?!index\.html$)/;
 const PAGE_OK = (c) => typeof c === "string" && /^[a-z0-9][a-z0-9/_-]*\/index\.html$|^index\.html$/.test(c) && !c.includes("..") && !EXCLUS.test(c);
+// Le menu, lui, est sur TOUTES les pages du site, fiches de la boutique et 404 comprises.
+const MENU_OK = (c) => typeof c === "string" && /^[a-z0-9][a-z0-9/_-]*\/index\.html$|^index\.html$|^404\.html$/.test(c) && !c.includes("..") && !/^(admin|api|node_modules|outils|\.)/.test(c);
 const PHOTO_OK = (c) => typeof c === "string" && /^img\/cms\/[a-z0-9-]+\.(webp|jpg)$/.test(c);
 
 const shaGit = (buf) => createHash("sha1").update(`blob ${buf.length}\0`).update(buf).digest("hex");
@@ -77,12 +83,12 @@ async function envoyerPhoto(b) {
 }
 
 // ---------- Publication ----------
-async function publier(b, qui) {
+async function publier(b, qui, okChemin = PAGE_OK) {
   const fichiers = Array.isArray(b.fichiers) ? b.fichiers : [];
   const photos = Array.isArray(b.photos) ? b.photos : [];
   if (!fichiers.length && !photos.length) throw refus(400, "Rien à publier.");
   for (const f of fichiers) {
-    if (!PAGE_OK(f.chemin) || typeof f.contenu !== "string" || f.contenu.length < 200 || !/<\/html>\s*$/i.test(f.contenu)) throw refus(400, `Page invalide : ${f.chemin}`);
+    if (!okChemin(f.chemin) || typeof f.contenu !== "string" || f.contenu.length < 200 || !/<\/html>\s*$/i.test(f.contenu)) throw refus(400, `Page invalide : ${f.chemin}`);
   }
   for (const p of photos) if (!PHOTO_OK(p.chemin) || !/^[0-9a-f]{40}$/.test(String(p.sha || ""))) throw refus(400, "Photo invalide.");
   const message = String(b.message || "Mise à jour du site depuis l'admin").replace(/\s+/g, " ").slice(0, 200) + `\n\nPublié depuis l'admin par ${qui}`;
@@ -132,6 +138,66 @@ async function publier(b, qui) {
   }
 }
 
+
+// ---------- Menu (toutes les pages d'un coup) ----------
+const CLE_MENU = "sb:menu";
+const ACCUEIL_FR = "index.html", ACCUEIL_EN = "en/index.html";
+
+// 77 pages : lues en parallèle par petits paquets, sinon c'est trop long.
+async function lireToutesLesPages() {
+  if (LOCAL) {
+    const pages = [];
+    const marcher = async (rel) => {
+      for (const n of await fs.readdir(path.join(DOSSIER_LOCAL, rel), { withFileTypes: true })) {
+        const c = rel ? `${rel}/${n.name}` : n.name;
+        if (n.isDirectory()) { if (!/^(admin|api|node_modules|outils|img|\.)/.test(c)) await marcher(c); }
+        else if (MENU_OK(c)) { const buf = await fs.readFile(path.join(DOSSIER_LOCAL, c)); pages.push({ chemin: c, sha: shaGit(buf), contenu: buf.toString("utf8") }); }
+      }
+    };
+    await marcher("");
+    return pages;
+  }
+  const arbre = await gh(`/git/trees/${BRANCHE}?recursive=1`);
+  const blobs = arbre.tree.filter((x) => x.type === "blob" && MENU_OK(x.path));
+  const pages = [];
+  for (let i = 0; i < blobs.length; i += 10) {
+    const paquet = await Promise.all(blobs.slice(i, i + 10).map(async (x) => {
+      const j = await gh(`/git/blobs/${x.sha}`);
+      return { chemin: x.path, sha: x.sha, contenu: Buffer.from(j.content, "base64").toString("utf8") };
+    }));
+    pages.push(...paquet);
+  }
+  return pages;
+}
+
+// La structure vient toujours des pages (source de vérité) ; Redis ne garde que
+// l'ordre voulu, les noms choisis et ce qui est masqué.
+async function menuActuel() {
+  const fr = (await lirePage(ACCUEIL_FR)).contenu;
+  const en = (await lirePage(ACCUEIL_EN)).contenu;
+  const duSite = entreesDepuisHtml(fr, en);
+  let enregistre = null;
+  try { enregistre = await lireJSON(CLE_MENU, null); } catch { /* sans Redis : on part des pages */ }
+  return fusionner(enregistre, duSite);
+}
+
+async function publierMenu(b, qui) {
+  const reference = await menuActuel();
+  let entrees;
+  try { entrees = verifier(b.entrees, reference); } catch (e) { throw refus(400, e.message); }
+  const pages = await lireToutesLesPages();
+  const fichiers = [];
+  for (const p of pages) {
+    const neuf = reecrirePage(p.contenu, p.chemin, entrees);
+    // Pas de sha ici : les pages viennent d'être lues, les revérifier une par une ferait 77 appels de plus.
+    if (neuf !== p.contenu) fichiers.push({ chemin: p.chemin, contenu: neuf });
+  }
+  try { await ecrireJSON(CLE_MENU, entrees); } catch { /* sans Redis : le HTML suffit */ }
+  if (!fichiers.length) return { ok: true, pages: 0, entrees, rien: true };
+  const r = await publier({ fichiers, photos: [], message: "Mon site : ordre du menu" }, qui, MENU_OK);
+  return { ok: true, pages: fichiers.length, entrees, commit: r.commit };
+}
+
 export default async function handler(req, res) {
   try {
     const u = await exiger(req, res); if (!u) return;
@@ -146,6 +212,8 @@ export default async function handler(req, res) {
       if (!PAGE_OK(chemin)) return json(res, 400, { erreur: "Page invalide" });
       return json(res, 200, await lirePage(chemin));
     }
+    if (req.method === "GET" && action === "menu") return json(res, 200, { entrees: await menuActuel() });
+    if (req.method === "POST" && action === "menu") return json(res, 200, await publierMenu(await corps(req, 200_000), u.email || u.courriel || "admin"));
     if (req.method === "POST" && action === "photo") return json(res, 200, await envoyerPhoto(await corps(req, 4_200_000)));
     if (req.method === "POST" && action === "publier") return json(res, 200, await publier(await corps(req, 4_200_000), u.email || u.courriel || "admin"));
     return json(res, 405, { erreur: "Méthode non permise" });
