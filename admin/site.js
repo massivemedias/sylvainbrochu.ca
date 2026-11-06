@@ -73,7 +73,8 @@ export function creerSite(ctx) {
       <ol>
         <li>Choisis la page à corriger dans la liste « Page ».</li>
         <li>Clique un texte sur la page et écris directement, comme dans un courriel. Dans une liste, Entrée ajoute une ligne.</li>
-        <li>Clique une photo pour la remplacer, la déplacer ou la supprimer. Sous chaque galerie, le bouton « + Ajouter des photos » en ajoute.</li>
+        <li>Clique une photo pour la remplacer, la déplacer ou la supprimer.</li>
+        <li>Pour ajouter des photos, clique « + Ajouter des photos » en haut. Tu peux en choisir plusieurs d'un coup. Si la page n'a pas encore d'images, la section se crée toute seule.</li>
         <li>Clique « Publier ». Ta page est en ligne environ une minute plus tard, un message te le confirme.</li>
       </ol>
       <p class="aide">Un texte qui revient sur plusieurs pages (par exemple le titre d'un projet sur l'accueil) se corrige sur chaque page. Le site en anglais se corrige à part, avec le bouton « Version anglaise ».</p>
@@ -83,6 +84,7 @@ export function creerSite(ctx) {
       <div class="st-liens">
         <a class="btn petit" href="${E(urlPage(s.chemin))}" target="_blank" rel="noopener">Voir en ligne</a>
         ${jumelle ? `<button class="btn petit" data-st="jumelle">${s.chemin.startsWith("en/") ? "Version française" : "Version anglaise"}</button>` : ""}
+        <button class="btn petit laiton" data-st="photos">+ Ajouter des photos</button>
         <button class="btn petit" data-st="menu">Ordre du menu</button>
         <button class="btn petit" data-st="google">Titre et description Google</button>
         <button class="btn petit" data-st="zones" aria-pressed="${s.zones ? "true" : "false"}">${s.zones ? "Cacher les zones modifiables" : "Montrer ce qui se modifie"}</button>
@@ -162,8 +164,10 @@ export function creerSite(ctx) {
     const base = doc.createElement("base"); base.setAttribute("href", location.origin + "/"); tete.prepend(base);
     const st = doc.createElement("style"); st.textContent = STYLE_APERCU; tete.append(st);
     const f = $("#st-apercu");
-    f.onload = () => brancher(f);
-    f.srcdoc = s.doctype + copie.outerHTML;
+    return new Promise((pret) => {
+      f.onload = () => { brancher(f); pret(); };
+      f.srcdoc = s.doctype + copie.outerHTML;
+    });
   }
 
   function brancher(f) {
@@ -172,6 +176,7 @@ export function creerSite(ctx) {
     d.querySelectorAll('[data-cms-t="t"]').forEach((el) => { el.contentEditable = "true"; el.spellcheck = true; });
     d.documentElement.classList.toggle("cms-zones", !!s.zones);
     d.querySelectorAll('[data-cms-t="g"]').forEach((g) => ajouterBoutonGalerie(d, g));
+    fidele(d, f);
     d.addEventListener("click", (e) => {
       const ajout = e.target.closest("[data-cms-ajout]");
       if (ajout) { e.preventDefault(); return choisirPhotos(ajout.getAttribute("data-cms-ajout")); }
@@ -193,6 +198,22 @@ export function creerSite(ctx) {
     const w = f.contentWindow;
     w.scrollTo(0, s.defil || 0);
     w.addEventListener("scroll", () => { s.defil = w.scrollY; }, { passive: true });
+  }
+
+  // L'aperçu est servi sans les scripts du site : on remet à la main les classes
+  // que main.js pose, pour que ce que Sylvain voit ici soit son site, à l'identique.
+  function fidele(d, f) {
+    const hero = d.querySelector(".hero");
+    if (hero) hero.classList.add("lit");
+    const nav = d.querySelector(".nav");
+    if (nav) {
+      const w = f.contentWindow;
+      const solide = () => nav.classList.toggle("solid", !hero || w.scrollY > w.innerHeight * 0.6);
+      solide();
+      w.addEventListener("scroll", solide, { passive: true });
+    }
+    d.documentElement.classList.add("anim");
+    d.querySelectorAll(".rv, .rv-img").forEach((el) => el.classList.add("vu"));
   }
 
   function ajouterBoutonGalerie(d, g) {
@@ -361,6 +382,46 @@ export function creerSite(ctx) {
         fermerModale(); majBarre();
       };
     });
+  }
+
+  // Retrouve l'identifiant d'aperçu d'un élément de la page
+  const idDe = (el) => { for (const [id, x] of s.ids) if (x === el) return id; return null; };
+
+  // Une page sans galerie : on lui en crée une, au même format que les autres pages du site.
+  function creerGalerie() {
+    const anglais = s.chemin.startsWith("en/");
+    const main = s.doc.querySelector("main") || s.doc.body;
+    const sec = s.doc.createElement("section");
+    sec.className = "galerie";
+    sec.setAttribute("aria-labelledby", "t-galerie");
+    sec.innerHTML = `<div class="wrap"><h2 id="t-galerie">${anglais ? "Gallery" : "Images"}</h2><div class="grille"></div></div>`;
+    const voisins = main.querySelector("nav.voisins");
+    if (voisins) voisins.before(sec); else main.append(sec);
+    s.nb++;
+    return sec.querySelector(".grille");
+  }
+
+  function choisirFichiers() {
+    return new Promise((ok) => {
+      const i = document.createElement("input");
+      i.type = "file"; i.accept = "image/*,.heic,.heif"; i.multiple = true; i.hidden = true;
+      i.onchange = () => { ok([...i.files]); i.remove(); };
+      i.oncancel = () => { ok([]); i.remove(); };
+      document.body.append(i); i.click();
+    });
+  }
+
+  // Bouton « Ajouter des photos » de la barre : marche sur toutes les pages,
+  // même celles qui n'ont pas encore d'images.
+  async function ajouterPhotosPage() {
+    const fichiers = await choisirFichiers();
+    if (!fichiers.length) return;
+    let grille = s.doc.querySelector(".galerie .grille");
+    if (!grille) { grille = creerGalerie(); await construireApercu(); }
+    const gid = idDe(grille);
+    if (!gid) return toast("Impossible d'ajouter une photo sur cette page.", true);
+    enApercu(gid)?.closest("section")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    await ajouterPhotos(gid, fichiers);
   }
 
   function choisirPhotos(gid) {
@@ -579,6 +640,10 @@ export function creerSite(ctx) {
       const compte = g.closest(".galerie")?.querySelector(".compte");
       if (compte) { const n = g.querySelectorAll("figure").length; compte.textContent = compte.textContent.replace(/\d+/, n).replace(/\bimages?\b/, n > 1 ? "images" : "image"); }
     });
+    // Une galerie créée puis laissée vide ne part pas sur le site
+    s.doc.querySelectorAll("section.galerie").forEach((sec) => {
+      if (!sec.querySelector(".grille figure")) sec.remove();
+    });
     return s.doctype + "\n" + s.doc.documentElement.outerHTML + "\n";
   }
 
@@ -641,6 +706,7 @@ export function creerSite(ctx) {
     if (a === "annuler") annuler();
     if (a === "google") reglagesGoogle();
     if (a === "menu") ordreMenu();
+    if (a === "photos") ajouterPhotosPage();
     if (a === "compris") { try { localStorage.setItem("sb-site-guide", "vu"); } catch { /* sans mémoire */ } t.closest(".st-guide")?.remove(); }
     if (a === "zones") {
       s.zones = !s.zones;
@@ -664,6 +730,7 @@ figcaption[data-cms-t="t"]:empty::before { content: "Écris une légende (facult
 [data-cms-t="i"]:hover { outline: 3px solid #c8a26b; outline-offset: -3px; filter: brightness(1.05); }
 .cms-zones [data-cms-t="t"] { outline-color: rgba(200,162,107,.5); }
 .cms-zones [data-cms-t="i"] { outline: 2px dashed rgba(200,162,107,.75); outline-offset: -2px; }
+.hero.lit img.hero-img { animation: none !important; }
 a, button { cursor: default; }
 .cms-ajout { display: block; width: 100%; margin: 18px 0 0; padding: 16px; border: 2px dashed rgba(200,162,107,.8); border-radius: 6px; background: rgba(200,162,107,.08); color: #c8a26b; font: 600 1rem/1.2 system-ui, sans-serif; cursor: pointer; }
 .cms-ajout:hover { background: rgba(200,162,107,.18); }
