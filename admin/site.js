@@ -86,6 +86,7 @@ export function creerSite(ctx) {
         ${jumelle ? `<button class="btn petit" data-st="jumelle">${s.chemin.startsWith("en/") ? "Version française" : "Version anglaise"}</button>` : ""}
         <button class="btn petit laiton" data-st="photos">+ Ajouter des photos</button>
         <button class="btn petit" data-st="menu">Ordre du menu</button>
+        <button class="btn petit" data-st="blocs">Organiser les sections</button>
         <button class="btn petit" data-st="google">Titre et description Google</button>
         <button class="btn petit" data-st="zones" aria-pressed="${s.zones ? "true" : "false"}">${s.zones ? "Cacher les zones modifiables" : "Montrer ce qui se modifie"}</button>
       </div>
@@ -589,6 +590,159 @@ export function creerSite(ctx) {
     });
   }
 
+
+  // ---------- Organiser les sections d'une page ----------
+  async function organiserBlocs() {
+    if (sale()) return toast("Publie ou annule d'abord tes changements de texte sur cette page.", true);
+    let r;
+    try { r = await api(`/api/site/?action=blocs&chemin=${encodeURIComponent(s.chemin)}`); }
+    catch (e) { return toast("Sections impossibles à ouvrir : " + e.message, true); }
+
+    const items = r.blocs.map((b) => ({ ...b, vers: "", position: "fin" }));
+    const depart = JSON.stringify(items);
+    const anglais = r.jumelle && r.jumelle.alignee;
+    let aussiEn = !!anglais;
+    let envoi = false;
+
+    // Pages de destination : celles de la même langue, sauf la page ouverte.
+    const en = s.chemin.startsWith("en/");
+    const dest = s.pages.filter((c) => c !== s.chemin && c.startsWith("en/") === en && !/\/(merci|thank-you)\//.test("/" + c));
+
+    ouvrirModale("Organiser les sections", `
+      <p class="aide">Chaque ligne est une grande section de la page <strong>${E(nomPage(s.chemin))}</strong>. Glisse-la, ou utilise les flèches, pour la monter ou la descendre. Tu peux aussi la masquer, ou l'envoyer sur une autre page.</p>
+      <ul class="bl-liste" id="bl-liste"></ul>
+      ${anglais ? `<label class="bl-en"><input type="checkbox" id="bl-en" checked> Appliquer la même organisation à la version anglaise (${E(nomPage(r.jumelle.chemin))})</label>`
+        : r.jumelle ? `<p class="aide">La version anglaise de cette page n'a pas le même nombre de sections : elle ne sera pas touchée, pense à l'organiser à part.</p>` : ""}
+      <p class="aide">Une section masquée disparaît de la page mais rien n'est perdu : tu peux la réafficher quand tu veux.</p>
+      <p class="aide bl-envoi" hidden><span class="tourne"></span> Mise à jour des pages...</p>`,
+    `<button class="btn" data-bl="annuler">Annuler</button>
+     <button class="btn laiton" data-bl="publier">Publier l'organisation</button>`,
+    (m) => {
+      const liste = $("#bl-liste", m);
+      const restants = () => items.filter((x) => !x.vers && !x.masque).length;
+
+      const dessiner = () => {
+        const places = items.filter((x) => !x.vers);
+        liste.innerHTML = items.map((b, i) => {
+          const rang = places.indexOf(b);
+          const options = dest.map((c) => `<option value="${E(c)}" ${b.vers === c ? "selected" : ""}>${E(nomPage(c))}</option>`).join("");
+          return `
+          <li class="bl-ligne${b.masque ? " cache" : ""}${b.vers ? " part" : ""}" draggable="${b.vers ? "false" : "true"}" data-i="${i}">
+            <span class="bl-prise" aria-hidden="true">&#10303;</span>
+            <div class="bl-flex">
+              <p class="bl-titre">${E(b.titre)}${b.masque ? ' <span class="bl-tag">masquée</span>' : ""}${b.vers ? ` <span class="bl-tag">part vers ${E(nomPage(b.vers))}</span>` : ""}</p>
+              ${b.resume ? `<p class="bl-resume">${E(b.resume)}</p>` : ""}
+              <p class="bl-info">${b.photos ? `${b.photos} photo${b.photos > 1 ? "s" : ""}` : "sans photo"}${b.ancre ? ` &middot; ancre #${E(b.ancre)}` : ""}</p>
+              <div class="bl-vers">
+                <label><span>Déplacer vers</span>
+                  <select data-bl-vers="${i}"><option value="">rester sur cette page</option>${options}</select>
+                </label>
+                <label class="bl-pos"${b.vers ? "" : " hidden"}><span>Position</span>
+                  <select data-bl-pos="${i}"><option value="fin" ${b.position === "fin" ? "selected" : ""}>à la fin</option><option value="debut" ${b.position === "debut" ? "selected" : ""}>au début</option></select>
+                </label>
+              </div>
+            </div>
+            <div class="bl-boutons">
+              <button type="button" class="btn petit" data-bl-haut="${i}" ${b.vers || rang <= 0 ? "disabled" : ""} aria-label="Monter cette section">&uarr;</button>
+              <button type="button" class="btn petit" data-bl-bas="${i}" ${b.vers || rang < 0 || rang === places.length - 1 ? "disabled" : ""} aria-label="Descendre cette section">&darr;</button>
+              <button type="button" class="btn petit" data-bl-voir="${i}" ${b.vers ? "disabled" : ""}>${b.masque ? "Afficher" : "Masquer"}</button>
+            </div>
+          </li>`;
+        }).join("");
+      };
+
+      // Déplace l'élément i d'un cran parmi les sections restées sur la page.
+      const bouger = (i, sens) => {
+        const places = items.filter((x) => !x.vers);
+        const n = places.indexOf(items[i]);
+        const voisin = places[n + sens];
+        if (!voisin) return;
+        const j = items.indexOf(voisin);
+        items.splice(j, 0, items.splice(i, 1)[0]);
+        dessiner();
+      };
+
+      liste.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-bl-haut], button[data-bl-bas], button[data-bl-voir]");
+        if (!b) return;
+        e.preventDefault();
+        if (b.hasAttribute("data-bl-haut")) return bouger(+b.getAttribute("data-bl-haut"), -1);
+        if (b.hasAttribute("data-bl-bas")) return bouger(+b.getAttribute("data-bl-bas"), 1);
+        const i = +b.getAttribute("data-bl-voir");
+        if (!items[i].masque && restants() <= 1) return toast("Garde au moins une section visible sur la page.", true);
+        items[i].masque = !items[i].masque; dessiner();
+      });
+
+      liste.addEventListener("change", (e) => {
+        const c = e.target;
+        if (c.hasAttribute("data-bl-vers")) {
+          const i = +c.getAttribute("data-bl-vers");
+          if (c.value && restants() <= 1 && !items[i].masque) { c.value = ""; return toast("Garde au moins une section visible sur la page.", true); }
+          items[i].vers = c.value;
+          if (c.value) items[i].masque = false;
+          dessiner();
+        } else if (c.hasAttribute("data-bl-pos")) items[+c.getAttribute("data-bl-pos")].position = c.value;
+      });
+
+      let tire = null;
+      liste.addEventListener("dragstart", (e) => {
+        const li = e.target.closest(".bl-ligne"); if (!li || li.classList.contains("part")) return;
+        tire = +li.getAttribute("data-i"); li.classList.add("tire");
+        e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(tire));
+      });
+      liste.addEventListener("dragover", (e) => {
+        if (tire === null) return;
+        e.preventDefault();
+        const li = e.target.closest(".bl-ligne"); if (!li) return;
+        liste.querySelectorAll(".survol").forEach((x) => x.classList.remove("survol"));
+        li.classList.add("survol");
+      });
+      liste.addEventListener("drop", (e) => {
+        if (tire === null) return;
+        e.preventDefault();
+        const li = e.target.closest(".bl-ligne");
+        const de = tire; tire = null;
+        if (!li) return dessiner();
+        const vers = +li.getAttribute("data-i");
+        if (vers === de || items[vers].vers) return dessiner();
+        items.splice(vers, 0, items.splice(de, 1)[0]);
+        dessiner();
+      });
+      liste.addEventListener("dragend", () => { if (tire !== null) { tire = null; dessiner(); } });
+
+      const caseEn = $("#bl-en", m);
+      if (caseEn) caseEn.onchange = () => { aussiEn = caseEn.checked; };
+
+      $('[data-bl="annuler"]', m).onclick = () => fermerModale();
+      $('[data-bl="publier"]', m).onclick = async () => {
+        if (envoi) return;
+        if (JSON.stringify(items) === depart) { fermerModale(); return toast("Rien n'a changé dans l'organisation."); }
+        envoi = true;
+        $(".bl-envoi", m).hidden = false;
+        $('[data-bl="publier"]', m).disabled = true; $('[data-bl="annuler"]', m).disabled = true;
+        try {
+          const rep = await api("/api/site/?action=blocs", { method: "POST", body: {
+            chemin: s.chemin,
+            ordre: items.map((x) => x.id),
+            masques: items.filter((x) => x.masque && !x.vers).map((x) => x.id),
+            sorties: items.filter((x) => x.vers).map((x) => ({ id: x.id, vers: x.vers, position: x.position })),
+            aussiEn,
+          } });
+          fermerModale();
+          const note = rep.anglais && !rep.anglais.fait && rep.anglais.raison ? " " + rep.anglais.raison : "";
+          toast(rep.rien ? "L'organisation était déjà comme ça." : `Organisation publiée sur ${rep.pages} page${rep.pages > 1 ? "s" : ""}. Ton site sera à jour dans environ une minute.${note}`);
+          if (!rep.rien) { s.doc = null; page(); }
+        } catch (e) {
+          toast(e.code === "REFUS" ? e.message : "Organisation pas publiée : " + e.message, true);
+          envoi = false; $(".bl-envoi", m).hidden = true;
+          $('[data-bl="publier"]', m).disabled = false; $('[data-bl="annuler"]', m).disabled = false;
+        }
+      };
+
+      dessiner();
+    });
+  }
+
   function reglagesGoogle() {
     const doc = s.doc;
     const titre = doc.querySelector("title"), desc = doc.querySelector('meta[name="description"]');
@@ -707,6 +861,7 @@ export function creerSite(ctx) {
     if (a === "google") reglagesGoogle();
     if (a === "menu") ordreMenu();
     if (a === "photos") ajouterPhotosPage();
+    if (a === "blocs") organiserBlocs();
     if (a === "compris") { try { localStorage.setItem("sb-site-guide", "vu"); } catch { /* sans mémoire */ } t.closest(".st-guide")?.remove(); }
     if (a === "zones") {
       s.zones = !s.zones;

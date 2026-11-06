@@ -469,6 +469,30 @@ select option { background: #fff; color: var(--texte); }
 .mn-envoi { margin-top: 10px; }
 @media (max-width: 620px) { .mn-ligne { flex-wrap: wrap; } .mn-boutons { width: 100%; justify-content: flex-end; } }
 
+/* ---------- Organiser les sections d'une page ---------- */
+.bl-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bl-ligne { display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--trait); border-radius: 6px; padding: 11px 13px; background: var(--carte); }
+.bl-ligne.cache { opacity: .6; background: var(--carte-2); }
+.bl-ligne.part { background: var(--carte-2); border-style: dashed; }
+.bl-ligne.tire { opacity: .4; }
+.bl-ligne.survol { border-color: var(--laiton); box-shadow: 0 0 0 2px rgba(200,162,107,.3); }
+.bl-prise { cursor: grab; color: var(--tres-doux); font-size: 1.15rem; line-height: 1.6; user-select: none; }
+.bl-ligne.part .bl-prise { cursor: default; opacity: .4; }
+.bl-flex { flex: 1; min-width: 0; }
+.bl-titre { margin: 0; font-weight: 650; font-size: .98rem; line-height: 1.35; }
+.bl-tag { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding: 2px 7px; border-radius: 3px; background: rgba(200,162,107,.18); color: var(--laiton); vertical-align: 1px; }
+.bl-resume { margin: 3px 0 0; font-size: .85rem; color: var(--doux); line-height: 1.4; }
+.bl-info { margin: 3px 0 0; font-size: .76rem; color: var(--tres-doux); }
+.bl-vers { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.bl-vers label { display: grid; gap: 2px; min-width: 150px; }
+.bl-vers label span { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--doux); }
+.bl-vers select { padding: 6px 8px; border: 1px solid var(--trait); border-radius: 4px; font: inherit; font-size: .88rem; background: var(--carte); color: var(--texte); max-width: 100%; }
+.bl-vers select:focus { outline: 2px solid var(--laiton); outline-offset: -1px; }
+.bl-boutons { display: flex; gap: 5px; flex-shrink: 0; }
+.bl-en { display: flex; align-items: center; gap: 8px; margin: 14px 0 2px; font-size: .92rem; }
+.bl-envoi { margin-top: 10px; }
+@media (max-width: 620px) { .bl-ligne { flex-wrap: wrap; } .bl-boutons { width: 100%; justify-content: flex-end; } }
+
 /* ---------- Tableau de bord dynamique ---------- */
 .bandeau-alerte { background: #3a2015; border-left: 4px solid #e06c3a; color: #f2e2d8; padding: 13px 18px; margin-bottom: 18px; border-radius: 4px; font-size: .95rem; }
 .bandeau-alerte b { color: #f89a70; }

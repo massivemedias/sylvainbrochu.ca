@@ -6,6 +6,8 @@
 //   POST ?action=publier              { fichiers: [{ chemin, contenu, sha }], photos: [{ chemin, sha }], message }
 //   GET  ?action=menu                 l'ordre et les noms des onglets du menu (FR et EN ensemble)
 //   POST ?action=menu                 { entrees } : applique le menu aux ~77 pages du site, en un seul commit
+//   GET  ?action=blocs&chemin=<f>     les grandes sections d'une page (ordre, masquage, page jumelle)
+//   POST ?action=blocs                { chemin, ordre, masques, sorties, aussiEn } : réorganise la page et déplace des sections vers d'autres pages
 // Publier = un commit sur la branche main du dépôt ; Vercel remet le site en ligne tout seul (environ une minute).
 // Sans jeton GitHub mais en local (SB_LOCAL=1), les pages sont lues et écrites dans un dossier (SB_SITE_DIR).
 import { createHash } from "node:crypto";
@@ -14,6 +16,7 @@ import path from "node:path";
 import { exiger } from "./_lib/auth.js";
 import { lireJSON, ecrireJSON } from "./_lib/kv.js";
 import { entreesDepuisHtml, fusionner, reecrirePage, verifier } from "./_lib/menu.js";
+import { apercu, appliquer, decouper, inserer, jumeau } from "./_lib/blocs.js";
 import { corps, erreur, json, parametres } from "./_lib/util.js";
 
 const DEPOT = process.env.GITHUB_REPO || "massivemedias/sylvainbrochu.ca";
@@ -198,6 +201,127 @@ async function publierMenu(b, qui) {
   return { ok: true, pages: fichiers.length, entrees, commit: r.commit };
 }
 
+
+// ---------- Blocs (les grandes sections d'une page) ----------
+async function lireBlocs(chemin) {
+  const { contenu } = await lirePage(chemin);
+  const d = decouper(contenu);
+  if (!d) throw refus(400, "Cette page n'a pas de sections repérables.");
+  return { contenu, d };
+}
+
+async function blocsDeLaPage(chemin) {
+  const { contenu, d } = await lireBlocs(chemin);
+  const j = jumeau(contenu, chemin);
+  let jumelle = null;
+  if (j && PAGE_OK(j)) {
+    try {
+      const autre = await lireBlocs(j);
+      jumelle = { chemin: j, nb: autre.d.blocs.length, alignee: autre.d.blocs.length === d.blocs.length };
+    } catch { jumelle = null; }
+  }
+  return { chemin, blocs: apercu(d), jumelle };
+}
+
+// L'identifiant du bloc de même rang sur la page jumelle.
+const memeRang = (source, cible, id) => {
+  const n = source.blocs.findIndex((b) => b.id === id);
+  return n < 0 || !cible.blocs[n] ? null : cible.blocs[n].id;
+};
+
+async function publierBlocs(b, qui) {
+  const chemin = String(b.chemin || "");
+  if (!PAGE_OK(chemin)) throw refus(400, "Page invalide.");
+  const ordre = Array.isArray(b.ordre) ? b.ordre.map(String) : [];
+  const masques = Array.isArray(b.masques) ? b.masques.map(String) : [];
+  const sorties = (Array.isArray(b.sorties) ? b.sorties : []).map((x) => ({ id: String(x.id || ""), vers: String(x.vers || ""), position: String(x.position || "fin") }));
+  for (const s of sorties) {
+    if (!PAGE_OK(s.vers)) throw refus(400, "Page de destination invalide.");
+    if (s.vers === chemin) throw refus(400, "Pour changer l'ordre dans la même page, sers-toi des flèches.");
+  }
+
+  const source = await lireBlocs(chemin);
+  if (ordre.length !== source.d.blocs.length) throw refus(409, "Cette page a changé depuis que tu l'as ouverte. Recharge-la, puis refais ton organisation.");
+
+  const fichiers = [];
+  const pousser = (c, contenu) => { if (!fichiers.some((f) => f.chemin === c)) fichiers.push({ chemin: c, contenu }); };
+
+  let r;
+  try { r = appliquer(source.d, ordre, masques, sorties.map((s) => s.id)); } catch (e) { throw refus(409, e.message); }
+  pousser(chemin, r.html);
+
+  // Déplacements vers d'autres pages, regroupés par page de destination.
+  const parCible = new Map();
+  for (const s of sorties) {
+    const bloc = r.sortis.find((x) => x.id === s.id);
+    if (!bloc) continue;
+    const e = parCible.get(s.vers) || { position: s.position, blocs: [] };
+    e.blocs.push(bloc);
+    parCible.set(s.vers, e);
+  }
+  const ciblesLues = new Map();
+  for (const [vers, e] of parCible) {
+    const c = await lireBlocs(vers);
+    ciblesLues.set(vers, c);
+    pousser(vers, inserer(c.d, e.blocs, e.position));
+  }
+
+  // Version anglaise : même organisation, repérée par le rang des sections.
+  let anglais = null;
+  if (b.aussiEn) {
+    const jSource = jumeau(source.contenu, chemin);
+    if (jSource && PAGE_OK(jSource)) {
+      const cs = await lireBlocs(jSource);
+      if (cs.d.blocs.length !== source.d.blocs.length) anglais = { fait: false, raison: "La version anglaise n'a pas le même nombre de sections, elle n'a pas été touchée." };
+      else {
+        const ordreEn = ordre.map((id) => memeRang(source.d, cs.d, id)).filter(Boolean);
+        const masquesEn = masques.map((id) => memeRang(source.d, cs.d, id)).filter(Boolean);
+        const sortiesEn = [];
+        let souci = "";
+        for (const s of sorties) {
+          const idEn = memeRang(source.d, cs.d, s.id);
+          const cible = ciblesLues.get(s.vers);
+          const jCible = cible ? jumeau(cible.contenu, s.vers) : "";
+          if (!idEn || !jCible || !PAGE_OK(jCible)) { souci = "Une section déplacée n'a pas d'équivalent anglais, elle est restée en place côté anglais."; continue; }
+          let positionEn = "fin";
+          if (s.position === "debut") positionEn = "debut";
+          else if (s.position !== "fin") {
+            const cEn = ciblesLues.get(jCible) || (ciblesLues.set(jCible, await lireBlocs(jCible)), ciblesLues.get(jCible));
+            positionEn = memeRang(cible.d, cEn.d, s.position) || "fin";
+          }
+          sortiesEn.push({ id: idEn, vers: jCible, position: positionEn });
+        }
+        try {
+          const rEn = appliquer(cs.d, ordreEn, masquesEn, sortiesEn.map((s) => s.id));
+          pousser(jSource, rEn.html);
+          const parCibleEn = new Map();
+          for (const s of sortiesEn) {
+            const bloc = rEn.sortis.find((x) => x.id === s.id);
+            if (!bloc) continue;
+            const e = parCibleEn.get(s.vers) || { position: s.position, blocs: [] };
+            e.blocs.push(bloc);
+            parCibleEn.set(s.vers, e);
+          }
+          for (const [vers, e] of parCibleEn) {
+            const c = ciblesLues.get(vers) || (ciblesLues.set(vers, await lireBlocs(vers)), ciblesLues.get(vers));
+            pousser(vers, inserer(c.d, e.blocs, e.position));
+          }
+          anglais = { fait: true, raison: souci };
+        } catch (e) { anglais = { fait: false, raison: e.message }; }
+      }
+    } else anglais = { fait: false, raison: "Cette page n'a pas de version anglaise." };
+  }
+
+  const aPublier = fichiers.filter((f) => {
+    if (f.chemin === chemin) return f.contenu !== source.contenu;
+    const c = ciblesLues.get(f.chemin);
+    return !c || f.contenu !== c.contenu;
+  });
+  if (!aPublier.length) return { ok: true, pages: 0, rien: true, anglais };
+  const res = await publier({ fichiers: aPublier, photos: [], message: "Mon site : organisation des sections" }, qui);
+  return { ok: true, pages: aPublier.length, chemins: aPublier.map((f) => f.chemin), commit: res.commit, anglais };
+}
+
 export default async function handler(req, res) {
   try {
     const u = await exiger(req, res); if (!u) return;
@@ -212,6 +336,12 @@ export default async function handler(req, res) {
       if (!PAGE_OK(chemin)) return json(res, 400, { erreur: "Page invalide" });
       return json(res, 200, await lirePage(chemin));
     }
+    if (req.method === "GET" && action === "blocs") {
+      const chemin = q.get("chemin") || "";
+      if (!PAGE_OK(chemin)) return json(res, 400, { erreur: "Page invalide" });
+      return json(res, 200, await blocsDeLaPage(chemin));
+    }
+    if (req.method === "POST" && action === "blocs") return json(res, 200, await publierBlocs(await corps(req, 200_000), u.email || u.courriel || "admin"));
     if (req.method === "GET" && action === "menu") return json(res, 200, { entrees: await menuActuel() });
     if (req.method === "POST" && action === "menu") return json(res, 200, await publierMenu(await corps(req, 200_000), u.email || u.courriel || "admin"));
     if (req.method === "POST" && action === "photo") return json(res, 200, await envoyerPhoto(await corps(req, 4_200_000)));
