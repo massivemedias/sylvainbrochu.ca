@@ -110,34 +110,70 @@ function decoder(octets, cmap) {
   return out;
 }
 
+// Largeurs Helvetica / Arial, en cadratins. Sans elles, un « m » ou un « @ » passe pour deux
+// lettres étroites et le lecteur croit à un espace : « M ontréal », « info@ sylvainbrochu.ca ».
+const LARGEUR = (() => {
+  const t = {};
+  const poser = (chaine, v) => { for (const c of chaine) t[c] = v; };
+  poser(" !',.:;|ijlI[]()/\\`", 0.26);
+  poser("ft", 0.29);
+  poser("r", 0.33);
+  poser("-", 0.33);
+  poser("J", 0.5);
+  poser("ckszxvy", 0.5);
+  poser("abdeghnopqu0123456789", 0.556);
+  poser("LTZ", 0.59);
+  poser("FS?&EABKXVYCDHNRU", 0.69);
+  poser("GOPQ", 0.76);
+  poser("wM", 0.83);
+  poser("m%", 0.86);
+  poser("W@", 0.95);
+  return t;
+})();
+
 function texteDuContenu(s, polices) {
   const lignes = [];
-  let tx = 0, ty = 0;        // matrice de ligne (BT la remet à zéro)
-  let posY = null, posX = null; // position de ce qui est déjà dans la ligne en cours
-  let courant = "", cmap = null;
-  const finirLigne = () => { const t = courant.replace(/\s+/g, " ").trim(); if (t) lignes.push(t); courant = ""; };
+  let tx = 0, ty = 0;           // matrice de ligne (BT la remet à zéro)
+  let posY = null, posX = null; // position estimée de la fin de ce qui est déjà écrit
+  let courant = "", cmap = null, taille = 12;
+  // Les générateurs écrivent souvent le texte dans un repère retourné (Tm « 1 0 0 -1 »),
+  // où le haut de la page a le plus petit y. On note le sens pour remettre les lignes dans l'ordre.
+  let sensY = 1;
+  // Sans les métriques de la police, une demi-cadratin par caractère approche assez bien la largeur
+  // réelle : il suffit de savoir si le prochain morceau reprend là où le précédent s'arrête
+  // (même mot) ou nettement plus loin (espace). Sinon un PDF qui place chaque lettre
+  // séparément ressort en « B a r m a n ».
+  const avance = (t) => { let l = 0; for (const c of t) l += LARGEUR[c] ?? 0.55; return l * taille; };
+  let debutX = 0, debutY = 0;
+  const finirLigne = () => {
+    const t = courant.replace(/\s+/g, " ").trim();
+    if (t) lignes.push({ t, x: debutX, y: debutY * sensY, fin: posX ?? debutX });
+    courant = "";
+  };
+  const ecrire = (t) => { courant += t; posX += avance(t); };
   const placer = () => {
-    if (posY !== null && Math.abs(ty - posY) > 2.2) finirLigne();
-    else if (posY !== null && tx > posX + 1 && courant && !/\s$/.test(courant)) courant += " ";
+    if (posY !== null && Math.abs(ty - posY) > Math.max(2.2, taille * 0.4)) finirLigne();
+    else if (posY !== null && courant && !/\s$/.test(courant) && tx - posX > taille * 0.33) courant += " ";
+    if (!courant) { debutX = tx; debutY = ty; }
     posY = ty; posX = tx;
   };
 
-  const re = /\/([A-Za-z0-9#+.-]+)\s+[\d.]+\s+Tf|\(((?:\\.|[^\\()])*)\)\s*(?:Tj|')|\[((?:\\.|[^\]])*)\]\s*TJ|<([0-9A-Fa-f\s]*)>\s*(?:Tj|')|(-?[\d.]+)\s+(-?[\d.]+)\s+(?:Td|TD)|(?:-?[\d.]+\s+){4}(-?[\d.]+)\s+(-?[\d.]+)\s+Tm|\bT\*|\bBT\b|\bET\b/g;
+  const re = /\/([A-Za-z0-9#+.-]+)\s+(-?[\d.]+)\s+Tf|\(((?:\\.|[^\\()])*)\)\s*(?:Tj|')|\[((?:\\.|[^\]])*)\]\s*TJ|<([0-9A-Fa-f\s]*)>\s*(?:Tj|')|(-?[\d.]+)\s+(-?[\d.]+)\s+(?:Td|TD)|(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+Tm|\bT\*|\bBT\b|\bET\b/g;
   for (const m of s.matchAll(re)) {
-    if (m[1] !== undefined) { cmap = polices.get(m[1]) || null; continue; }
-    if (m[2] !== undefined) { placer(); courant += decoder(octetsTexte(litteral(m[2])), cmap); continue; }
-    if (m[3] !== undefined) {
+    if (m[1] !== undefined) { cmap = polices.get(m[1]) || null; const t = Math.abs(Number(m[2])); if (t > 0.5 && t < 300) taille = t; continue; }
+    if (m[3] !== undefined) { placer(); ecrire(decoder(octetsTexte(litteral(m[3])), cmap)); continue; }
+    if (m[4] !== undefined) {
       placer();
-      for (const p of m[3].matchAll(/\(((?:\\.|[^\\()])*)\)|<([0-9A-Fa-f\s]+)>|(-?[\d.]+)/g)) {
-        if (p[1] !== undefined) courant += decoder(octetsTexte(litteral(p[1])), cmap);
-        else if (p[2] !== undefined) courant += decoder(octetsHexa(p[2]), cmap);
-        else if (Number(p[3]) < -170) courant += " ";
+      for (const p of m[4].matchAll(/\(((?:\\.|[^\\()])*)\)|<([0-9A-Fa-f\s]+)>|(-?[\d.]+)/g)) {
+        if (p[1] !== undefined) ecrire(decoder(octetsTexte(litteral(p[1])), cmap));
+        else if (p[2] !== undefined) ecrire(decoder(octetsHexa(p[2]), cmap));
+        else { const n = Number(p[3]); posX -= (n * taille) / 1000; if (n < -170 && courant && !/\s$/.test(courant)) courant += " "; }
       }
       continue;
     }
-    if (m[4] !== undefined) { placer(); courant += decoder(octetsHexa(m[4]), cmap); continue; }
-    if (m[5] !== undefined) { tx += Number(m[5]); ty += Number(m[6]); continue; }
-    if (m[7] !== undefined) { tx = Number(m[7]); ty = Number(m[8]); continue; }
+    if (m[5] !== undefined) { placer(); ecrire(decoder(octetsHexa(m[5]), cmap)); continue; }
+    if (m[6] !== undefined) { tx += Number(m[6]); ty += Number(m[7]); continue; }
+    if (m[8] !== undefined) { if (Number(m[11]) < 0) sensY = -1; tx = Number(m[12]); ty = Number(m[13]); continue; }
     const op = m[0].trim();
     if (op === "BT") { tx = 0; ty = 0; continue; }
     if (op === "T*") { ty -= 12; continue; }
@@ -151,6 +187,23 @@ function texteDuContenu(s, polices) {
 const NORMALISER = (s) => s.replace(/[\uf000-\uf0ff]/g, (c) => String.fromCharCode(c.charCodeAt(0) & 0xff));
 const PUCE_SEULE = /^[\u2022\u00b7\u25cf\u25aa\u25a0\u25e6\u2023\u2043\u00a4\u00de*\u2219-]\s*$/;
 
+// Un intitulé en gras et la suite du texte sont deux blocs séparés dans le fichier.
+// Sur la même ligne et collés l'un à l'autre, ils forment une seule phrase : on les recolle.
+// Une colonne alignée à droite (le lieu et les dates d'un poste) reste une ligne à part.
+function recoller(page) {
+  const out = [];
+  let prec = null;
+  for (const l of page) {
+    if (prec && Math.abs(l.y - prec.y) <= 2.5 && l.x - prec.fin < 14) {
+      prec.t = prec.t.replace(/\s+$/, "") + " " + l.t;
+      prec.fin = l.fin;
+      continue;
+    }
+    out.push(prec = { ...l });
+  }
+  return out.map((l) => l.t);
+}
+
 export function texteDuPdf(buf) {
   const objets = lireObjets(buf);
   const polices = cartesDesPolices(objets);
@@ -160,7 +213,12 @@ export function texteDuPdf(buf) {
     const d = contenuFlux(o); if (!d) continue;
     const s = d.toString("latin1");
     if (!/\bTj\b|\bTJ\b/.test(s)) continue;
-    lignes.push(...texteDuContenu(s, polices));
+    // Certains générateurs (dont celui du site) écrivent les titres d'abord et les puces ensuite :
+    // l'ordre du fichier n'est pas celui de la page. On remet donc chaque ligne à sa place,
+    // de haut en bas puis de gauche à droite.
+    const page = texteDuContenu(s, polices);
+    page.sort((a, b) => (Math.abs(b.y - a.y) > 2.5 ? b.y - a.y : a.x - b.x));
+    lignes.push(...recoller(page));
   }
   // Une puce dessinée à part (sa propre commande de texte) est recollée à la ligne qu'elle annonce.
   const sortie = [];
@@ -169,6 +227,7 @@ export function texteDuPdf(buf) {
     const l = NORMALISER(brute).trim();
     if (!l) continue;
     if (PUCE_SEULE.test(l)) { puce = "\u2022 "; continue; }
+    if (!/[0-9A-Za-z\u00c0-\u024f]/.test(l)) continue; // icône ou emoji seul sur sa ligne
     sortie.push(puce + l); puce = "";
   }
   return sortie.join("\n").trim();

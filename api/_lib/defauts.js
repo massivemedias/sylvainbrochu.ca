@@ -79,6 +79,16 @@ export const CVS_DEPART = [
   { v: "service", nom: "accueil et service", court: "CV accueil et service", fichier: "Sylvain-Brochu-CV-Service.pdf" },
 ];
 
+// Gabarit d'une nouvelle version de CV : l'en-tête est pré-rempli, le reste est vide
+// et se remplit tout seul quand Sylvain importe son PDF.
+export const CV_VIDE = {
+  nom: "SYLVAIN BROCHU", titre: "", courriel: "info@sylvainbrochu.ca", telephone: "514-299-5986",
+  linkedin: "https://www.linkedin.com/in/sylvain-brochu-profil", site: "https://www.sylvainbrochu.ca/",
+  lieu: "Montréal, Québec | Disponible immédiatement", disposition: "une_ligne", compact: true,
+  profil: "", titreCompetences: "Compétences clés", competences: [],
+  titreExperiences: "Expériences professionnelles", experiences: [], sections: [],
+};
+
 export const DONNEES_DEFAUT = {
   boutique: BOUTIQUE_DEPART, // pièces Onomiko en vente (gérées dans Ma boutique)
   candidatures: CANDIDATURES,

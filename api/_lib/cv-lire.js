@@ -20,6 +20,9 @@ const SECTIONS = [
 ];
 const TITRES_JOLIS = { formation: "Formation", langues: "Langues", autres: "Autres expériences" };
 
+// Les PDF mettent souvent une icône devant le courriel, le téléphone ou la ville.
+const ICONES = /[\u2190-\u27bf\u2b00-\u2bff\ufe0f\u{1f300}-\u{1faff}]/gu;
+const sansIcones = (l) => l.replace(ICONES, " ").replace(/\s{2,}/g, " ").trim();
 const sansPuce = (l) => l.replace(PUCE, "").trim();
 const estPuce = (l) => PUCE.test(l);
 const motsDe = (l) => l.trim().split(/\s+/).filter(Boolean);
@@ -55,6 +58,13 @@ const estLigneDates = (l) => {
   return motsDe(t).length <= 12 && !/[.;]$/.test(t);
 };
 
+// « Montréal, Canada », « Paris, France » : un lieu seul, sans dates, sous un intitulé de poste.
+const estLigneLieu = (l) => {
+  const t = sansPuce(l);
+  if (/\s[-–—|]\s|\s(?:chez|at|@)\s/i.test(t)) return false; // « Serveur - Vauvert, Hôtel St-Paul » est un poste
+  return motsDe(t).length <= 6 && /^[A-ZÀ-Ÿ][^,;:.!?]{2,30},\s*[A-ZÀ-Ÿ][^,;:.!?]{2,30}$/.test(t);
+};
+
 // « Directeur de production - Age of Union » / « Serveur, Hôtel X » / « Barman chez Y »
 function couperPoste(l) {
   const t = sansPuce(l).replace(/\s*[|·]\s*/g, " - ");
@@ -66,7 +76,7 @@ function couperPoste(l) {
 }
 
 export function lireCV(texteBrut, nomVersion = "") {
-  const lignes = String(texteBrut || "").replace(/\r/g, "").split("\n").map((l) => l.replace(/[   ]/g, " ").trimEnd());
+  const lignes = String(texteBrut || "").replace(/\r/g, "").split("\n").map((l) => sansIcones(l).replace(/[   ]/g, " ").trimEnd());
 
   // ---------- Découpage en sections ----------
   const blocs = []; // { cle, libelle, lignes[] }
@@ -126,16 +136,30 @@ export function lireCV(texteBrut, nomVersion = "") {
     titreExperiences = joliTitre(b.libelle);
     let poste = null;
     const fermer = () => { if (poste && (poste.poste || poste.puces.length)) experiences.push(poste); poste = null; };
+    // Une ligne qui porte un séparateur (« Poste - Employeur ») et ne finit pas par un point
+    // est un intitulé, même longue : sinon un titre de poste à rallonge passerait pour une puce.
+    const estIntitule = (l) => /\s[-–—]\s|\s(?:chez|at|@)\s/i.test(l) && !/[.;]$/.test(l) && motsDe(l).length <= 20;
     for (const brute of b.lignes) {
       const l = brute.trim(); if (!l) continue;
       if (estPuce(brute)) { if (!poste) poste = { poste: "", employeur: "", lieu: "", puces: [] }; poste.puces.push(sansPuce(brute)); continue; }
-      if (poste && !poste.lieu && !poste.puces.length && estLigneDates(l)) { poste.lieu = l; continue; }
-      // Une ligne pleine, longue et ponctuée après un poste : c'est une réalisation, pas un nouveau poste.
-      if (poste && !estLigneDates(l) && (motsDe(l).length > 12 || /[.;]$/.test(l))) { poste.puces.push(l); continue; }
+      // Une puce coupée en deux par la mise en page : la suite se recolle à la précédente.
+      if (poste && poste.puces.length && !estLigneDates(l) && !estIntitule(l)) {
+        const i = poste.puces.length - 1;
+        const der = poste.puces[i];
+        if (!/[.;:!?]$/.test(der)) { poste.puces[i] = /-$/.test(der) ? der.slice(0, -1) + l : der + " " + l; continue; }
+      }
+      if (estLigneDates(l) || estLigneLieu(l)) {
+        if (poste && !poste.lieu && !poste.puces.length) { poste.lieu = l; continue; }
+        if (estLigneLieu(l) && !estLigneDates(l)) { /* un lieu isolé n'ouvre pas un poste */ continue; }
+        fermer();
+        poste = { poste: "", employeur: "", lieu: l, puces: [] };
+        continue;
+      }
+      // Une ligne longue et ponctuée après un poste : c'est une réalisation, pas un nouveau poste.
+      if (poste && !estIntitule(l) && (motsDe(l).length > 14 || /[.;]$/.test(l))) { poste.puces.push(l); continue; }
       fermer();
       const c = couperPoste(l);
       poste = { poste: c.poste, employeur: c.employeur, lieu: "", puces: [] };
-      if (estLigneDates(l) && !c.employeur) { poste.poste = ""; poste.lieu = l; }
     }
     fermer();
   }
@@ -144,7 +168,13 @@ export function lireCV(texteBrut, nomVersion = "") {
   const sections = [];
   for (const b of blocs) {
     if (["profil", "competences", "experiences"].includes(b.cle)) continue;
-    const puces = b.lignes.map((l) => sansPuce(l)).filter(Boolean);
+    const puces = [];
+    for (const brute of b.lignes) {
+      const l = sansPuce(brute); if (!l) continue;
+      const der = puces.length ? puces[puces.length - 1] : "";
+      if (!estPuce(brute) && der && !/[.;:!?]$/.test(der)) puces[puces.length - 1] = /-$/.test(der) ? der.slice(0, -1) + l : der + " " + l;
+      else puces.push(l);
+    }
     if (!puces.length) continue;
     const titreBloc = joliTitre(b.libelle) || TITRES_JOLIS[b.cle] || "Autres";
     sections.push({ titre: titreBloc, puces });
