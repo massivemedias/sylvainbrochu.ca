@@ -1118,6 +1118,28 @@ function ouvrirComposeur(o = {}) {
   `<span class="aide">Pas prêt ? « Garder en brouillon » : tu le retrouves dans Mes courriels, Brouillons.</span>
    <div class="actions"><button class="btn" data-m="brouillon">Garder en brouillon</button><button class="btn laiton" data-m="envoyer">${c && !o.relance ? "Envoyer la candidature" : o.relance ? "Envoyer la relance" : "Envoyer"}</button></div>`,
   (racine) => {
+    // Filet de sécurité : le texte en cours est gardé dans le navigateur et redemandé à la réouverture.
+    const cleCtx = `${o.candidatureId || ""}|${o.enReponseA || ""}|${o.relance ? 1 : 0}`;
+    const noms = ["a", "cc", "cci", "sujet", "texte", "piece"];
+    const lireChamps = () => { const r = {}; noms.forEach((n) => { const el = $(`[name="${n}"]`, racine); if (el) r[n] = el.value; }); return r; };
+    const depart = JSON.stringify(lireChamps());
+    const garde = lireBrouillonLocal(cleCtx);
+    if (garde && (garde.sujet || "").trim() + (garde.texte || "").trim() && JSON.stringify(garde) !== depart) {
+      noms.forEach((n) => { const el = $(`[name="${n}"]`, racine); if (el && garde[n] != null) el.value = garde[n]; });
+      toast("Ton courriel en cours a été récupéré.");
+    }
+    let tSauv;
+    racine.addEventListener("input", () => { clearTimeout(tSauv); tSauv = setTimeout(() => ecrireBrouillonLocal(cleCtx, lireChamps()), 400); });
+    const modale = $("#modale");
+    modale._avantFermeture = () => {
+      clearTimeout(tSauv);
+      const actuel = lireChamps();
+      const vide = !(actuel.a || "").trim() && !(actuel.sujet || "").trim() && !(actuel.texte || "").trim();
+      if (vide || JSON.stringify(actuel) === depart) { oublierBrouillonLocal(); return true; }
+      ecrireBrouillonLocal(cleCtx, actuel);
+      return confirm("Fermer ce courriel ? Ce que tu as écrit est gardé et te sera reproposé à la prochaine ouverture.");
+    };
+    const terminer = () => { clearTimeout(tSauv); oublierBrouillonLocal(); modale._avantFermeture = null; };
     $('[name="modele"]', racine).onchange = (e) => {
       const m = mods.find((x) => x.id === e.target.value); if (!m) return;
       if (m.objet) $('[name="sujet"]', racine).value = remplir(m.objet, c || {});
@@ -1149,7 +1171,7 @@ function ouvrirComposeur(o = {}) {
     };
     $('[data-m="brouillon"]', racine).onclick = async (e) => {
       const b = e.currentTarget; b.disabled = true; b.textContent = "Enregistrement...";
-      try { await api("/api/courriels/?action=brouillon", { method: "POST", body: await message() }); apres(false); fermerModale(); toast("Courriel gardé dans les brouillons."); delete etat.boite.listes.brouillons; rendrePage(); }
+      try { await api("/api/courriels/?action=brouillon", { method: "POST", body: await message() }); apres(false); terminer(); fermerModale(); toast("Courriel gardé dans les brouillons."); delete etat.boite.listes.brouillons; rendrePage(); }
       catch (err) { b.disabled = false; b.textContent = "Garder en brouillon"; toast(err.code === "COURRIEL_ABSENT" ? "Connexion Gmail pas encore configurée (voir Réglages)." : err.message, true); }
     };
     $('[data-m="envoyer"]', racine).onclick = async (e) => {
@@ -1157,7 +1179,7 @@ function ouvrirComposeur(o = {}) {
       if (!m.a.trim()) return toast("Indique à qui envoyer (champ « À »).", true);
       if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.classList.add("laiton"); b.textContent = `Oui, envoyer à ${m.a.split(/[,;]/)[0].trim()}`; return; }
       b.disabled = true; b.textContent = "Envoi...";
-      try { await api("/api/courriels/?action=envoyer", { method: "POST", body: m }); apres(true); { const dest = m.a.toLowerCase(); etat.aRepondre = (etat.aRepondre || []).filter((x) => !dest.includes(x.de.courriel)); } fermerModale(); toast(c ? `Candidature envoyée à ${nomCourt(c)}.` : "Courriel envoyé."); delete etat.boite.listes.envoyes; rendrePage(); }
+      try { await api("/api/courriels/?action=envoyer", { method: "POST", body: m }); apres(true); { const dest = m.a.toLowerCase(); etat.aRepondre = (etat.aRepondre || []).filter((x) => !dest.includes(x.de.courriel)); } terminer(); fermerModale(); toast(c ? `Candidature envoyée à ${nomCourt(c)}.` : "Courriel envoyé."); delete etat.boite.listes.envoyes; rendrePage(); }
       catch (err) { b.disabled = false; b.textContent = "Réessayer l'envoi"; delete b.dataset.ok; toast(err.message, true); }
     };
   });
@@ -1729,16 +1751,37 @@ function pReglages() {
 // ======================================================================
 function ouvrirModale(titre, contenu, pied, brancher) {
   const m = $("#modale");
+  m._avantFermeture = null;
   m.innerHTML = `<div class="fenetre" role="dialog" aria-modal="true" aria-label="${E(titre.replace(/<[^>]+>/g, ""))}"><header><h2>${titre}</h2><button class="fermer" type="button" aria-label="Fermer">&times;</button></header><div class="contenu">${contenu}</div><footer>${pied}</footer></div>`;
   m.hidden = false; document.body.style.overflow = "hidden";
-  $(".fermer", m).onclick = fermerModale;
-  m.onclick = (e) => { if (e.target === m) fermerModale(); };
+  $(".fermer", m).onclick = demanderFermeture;
+  // Un clic dans le fond ne ferme plus la fenêtre : on ne perd jamais ce qui est en train d'être écrit.
+  m.onclick = (e) => { if (e.target === m) { const f = $(".fenetre", m); f && f.focus({ preventScroll: true }); } };
   brancher && brancher(m);
   // Le focus va sur la fenêtre (pas sur un champ : évite d'ouvrir le clavier sur téléphone et de surligner un champ).
   const f = $(".fenetre", m); f.tabIndex = -1; f.focus({ preventScroll: true });
 }
-function fermerModale() { const m = $("#modale"); m.hidden = true; m.innerHTML = ""; document.body.style.overflow = ""; }
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#modale").hidden) fermerModale(); });
+// Fermeture demandée par l'utilisateur (croix ou Échap) : une fenêtre peut la refuser (courriel en cours).
+function demanderFermeture() {
+  const m = $("#modale");
+  if (typeof m._avantFermeture === "function" && m._avantFermeture() === false) return;
+  fermerModale();
+}
+function fermerModale() { const m = $("#modale"); m._avantFermeture = null; m.hidden = true; m.innerHTML = ""; document.body.style.overflow = ""; }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#modale").hidden) demanderFermeture(); });
+
+// ----------------------------------------------------------------------
+// BROUILLON LOCAL DU COMPOSEUR (filet de sécurité, dans le navigateur)
+// ----------------------------------------------------------------------
+const CLE_BROUILLON = "sb:composeur";
+function lireBrouillonLocal(ctx) {
+  try { const o = JSON.parse(localStorage.getItem(CLE_BROUILLON) || "null");
+    if (!o || o.ctx !== ctx || Date.now() - o.ts > 7 * 864e5) return null; return o.champs; } catch { return null; }
+}
+function ecrireBrouillonLocal(ctx, champs) {
+  try { localStorage.setItem(CLE_BROUILLON, JSON.stringify({ ctx, champs, ts: Date.now() })); } catch {}
+}
+function oublierBrouillonLocal() { try { localStorage.removeItem(CLE_BROUILLON); } catch {} }
 
 // ======================================================================
 // ACTIONS (délégation)
