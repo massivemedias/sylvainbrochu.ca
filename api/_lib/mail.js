@@ -6,7 +6,7 @@ import MailComposer from "nodemailer/lib/mail-composer/index.js";
 import { simpleParser } from "mailparser";
 import { readFile } from "node:fs/promises";
 import { cmd, lireJSON } from "./kv.js";
-import { REGLAGES } from "./defauts.js";
+import { REGLAGES, CVS_DEPART } from "./defauts.js";
 
 const UTILISATEUR = process.env.MAIL_USER || "massivemedias@gmail.com";
 // Un mot de passe d'application Gmail fait 16 lettres. Si la valeur collée est plus longue
@@ -188,10 +188,14 @@ export async function piece(dossier, uid, index) {
 }
 
 // ---------- CV en pièce jointe ----------
+// Les versions de CV sont celles que Sylvain a créées dans l'admin : le nom du fichier vient
+// de la liste enregistrée, pas d'une liste figée dans le code.
 export async function pdfCV(version) {
-  const v = version === "barman" || version === "service" ? version : "carriere";
+  let liste = CVS_DEPART;
+  try { const l = await lireJSON("sb:cvs", null); if (Array.isArray(l) && l.length) liste = l; } catch { /* sans Redis */ }
+  const v = /^[a-z0-9][a-z0-9-]{1,23}$/.test(String(version)) && liste.some((x) => x.v === version) ? version : "carriere";
+  const nom = (liste.find((x) => x.v === v) || {}).fichier || `Sylvain-Brochu-CV-${v}.pdf`;
   const b64 = await cmd("GET", `sb:cvpdf:${v}`);
-  const nom = { carriere: "Sylvain-Brochu-CV.pdf", barman: "Sylvain-Brochu-CV-Bar.pdf", service: "Sylvain-Brochu-CV-Service.pdf" }[v];
   if (b64) return { nom, contenu: Buffer.from(b64, "base64") };
   return { nom, contenu: await readFile(new URL(`../_fichiers/cv-${v}.pdf`, import.meta.url)) };
 }

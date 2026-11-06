@@ -1,11 +1,15 @@
 // /api/donnees : lecture et écriture des données de l'admin (candidatures, CV, modèles, réglages...).
-// GET ?cle=tout|<cle>   PUT ?cle=<cle> (corps = nouvelle valeur)
+// GET ?cle=tout|<cle>   PUT ?cle=<cle> (corps = nouvelle valeur)   DELETE ?cle=cv-<v>
+// Les clés « cv-<v> » sont ouvertes : Sylvain crée ses propres versions de CV depuis l'admin.
 import { exiger } from "./_lib/auth.js";
 import { CLES, DONNEES_DEFAUT } from "./_lib/defauts.js";
 import { cmd, lireJSON, ecrireJSON } from "./_lib/kv.js";
 import { corps, erreur, json, parametres } from "./_lib/util.js";
 
 const k = (cle) => "sb:" + cle;
+// Une version de CV créée par Sylvain : la clé n'est pas dans la liste fixe, mais elle est permise.
+const CV_CLE = /^cv-[a-z0-9][a-z0-9-]{1,23}$/;
+const permise = (cle) => CLES.includes(cle) || CV_CLE.test(cle);
 
 export default async function handler(req, res) {
   try {
@@ -22,18 +26,33 @@ export default async function handler(req, res) {
           out[c] = v ?? DONNEES_DEFAUT[c];
         });
         out.reglages = { ...DONNEES_DEFAUT.reglages, ...out.reglages };
+        // Les CV que Sylvain a créés lui-même ne sont pas dans la liste fixe : on les ajoute ici.
+        const sup = (out.cvs || []).map((x) => `cv-${x.v}`).filter((c) => CV_CLE.test(c) && !CLES.includes(c));
+        if (sup.length) {
+          const autres = await cmd("MGET", ...sup.map(k));
+          sup.forEach((c, i) => { try { out[c] = autres[i] == null ? null : JSON.parse(autres[i]); } catch { out[c] = null; } });
+        }
         return json(res, 200, { donnees: out, utilisateur: u });
       }
       if (cle === "journal") {
         const l = (await cmd("LRANGE", "sb:journal", 0, 99)) || [];
         return json(res, 200, { valeur: l.map((x) => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean) });
       }
-      if (!CLES.includes(cle)) return json(res, 404, { erreur: "Clé inconnue" });
-      return json(res, 200, { valeur: await lireJSON(k(cle), DONNEES_DEFAUT[cle]) });
+      if (!permise(cle)) return json(res, 404, { erreur: "Clé inconnue" });
+      return json(res, 200, { valeur: await lireJSON(k(cle), DONNEES_DEFAUT[cle] ?? null) });
+    }
+
+    if (req.method === "DELETE") {
+      // Seules les versions de CV se suppriment ; le CV carrière reste, c'est celui du site.
+      if (!CV_CLE.test(cle) || cle === "cv-carriere") return json(res, 400, { erreur: "Cette donnée ne peut pas être supprimée." });
+      await cmd("DEL", k(cle));
+      await cmd("DEL", `sb:cvpdf:${cle.slice(3)}`);
+      await cmd("LPUSH", "sb:journal", JSON.stringify({ date: new Date().toISOString(), qui: u.email, quoi: `Version de CV supprimée : ${cle.slice(3)}` }));
+      return json(res, 200, { ok: true });
     }
 
     if (req.method === "PUT") {
-      if (!CLES.includes(cle)) return json(res, 404, { erreur: "Clé inconnue" });
+      if (!permise(cle)) return json(res, 404, { erreur: "Clé inconnue" });
       const valeur = await corps(req);
       if (cle === "reglages") {
         const acces = (valeur.acces || []).map((x) => String(x).trim().toLowerCase()).filter(Boolean);

@@ -70,9 +70,19 @@ export const PLATEFORMES = [
   { id: "guichet", nom: "Guichet-Emplois", compte: "https://www.guichetemplois.gc.ca/", profil: "carriere" },
 ];
 
+// Les versions de CV. Sylvain peut en créer d'autres lui-même depuis l'onglet Mon CV :
+// la liste vit dans Redis (clé « cvs »), les données de chaque version dans « cv-<v> ».
+// « carriere » est la seule publiée sur le site ; elle ne peut pas être supprimée.
+export const CVS_DEPART = [
+  { v: "carriere", nom: "carrière", court: "CV carrière", fichier: "Sylvain-Brochu-CV.pdf", surLeSite: true },
+  { v: "barman", nom: "barman", court: "CV barman", fichier: "Sylvain-Brochu-CV-Bar.pdf" },
+  { v: "service", nom: "accueil et service", court: "CV accueil et service", fichier: "Sylvain-Brochu-CV-Service.pdf" },
+];
+
 export const DONNEES_DEFAUT = {
   boutique: BOUTIQUE_DEPART, // pièces Onomiko en vente (gérées dans Ma boutique)
   candidatures: CANDIDATURES,
+  cvs: CVS_DEPART,
   "cv-carriere": CV_CARRIERE,
   "cv-barman": CV_BARMAN,
   "cv-service": CV_SERVICE,

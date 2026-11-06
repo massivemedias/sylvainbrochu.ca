@@ -790,13 +790,17 @@ function changerStatut(c, s) {
 }
 
 const detailsEssayes = new Set(); // une lecture automatique par fiche et par session
-const CVS = {
-  carriere: { v: "carriere", nom: "carrière", court: "CV carrière", fichier: "Sylvain-Brochu-CV.pdf" },
-  barman: { v: "barman", nom: "barman", court: "CV barman", fichier: "Sylvain-Brochu-CV-Bar.pdf" },
-  service: { v: "service", nom: "accueil et service", court: "CV accueil et service", fichier: "Sylvain-Brochu-CV-Service.pdf" },
-};
-const cvDe = (c) => CVS[c.cv] || CVS.carriere;
-const optionsCV = (val, aucun = "") => (aucun ? `<option value="">${aucun}</option>` : "") + Object.values(CVS).map((x) => `<option value="${x.v}" ${val === x.v ? "selected" : ""}>${x.court}</option>`).join("");
+// Les versions de CV viennent des données (clé « cvs ») : Sylvain crée les siennes dans Mon CV.
+const CVS_SECOURS = [
+  { v: "carriere", nom: "carrière", court: "CV carrière", fichier: "Sylvain-Brochu-CV.pdf", surLeSite: true },
+  { v: "barman", nom: "barman", court: "CV barman", fichier: "Sylvain-Brochu-CV-Bar.pdf" },
+  { v: "service", nom: "accueil et service", court: "CV accueil et service", fichier: "Sylvain-Brochu-CV-Service.pdf" },
+];
+const listeCVS = () => (Array.isArray(etat.d && etat.d.cvs) && etat.d.cvs.length ? etat.d.cvs : CVS_SECOURS);
+const infoCV = (v) => listeCVS().find((x) => x.v === v) || listeCVS()[0];
+const existeCV = (v) => listeCVS().some((x) => x.v === v);
+const cvDe = (c) => infoCV(c.cv);
+const optionsCV = (val, aucun = "") => (aucun ? `<option value="">${aucun}</option>` : "") + listeCVS().map((x) => `<option value="${x.v}" ${val === x.v ? "selected" : ""}>${E(x.court)}</option>`).join("");
 // Le guide en haut de la fiche : comment je postule à cette offre, étape par étape, avec les boutons au bon endroit.
 function guidePostuler(c) {
   const cv = cvDe(c);
@@ -851,7 +855,7 @@ function ficheCandidature(c, nouvelle = false) {
       <label class="champ large"><span>Lien du formulaire (pour postuler sur le site)</span><input name="formulaire" type="url" value="${v("formulaire")}"></label>
       <label class="champ large"><span>Lien de l'offre</span><input name="lien" type="url" value="${v("lien")}"></label>
       <label class="champ"><span>Nom du contact</span><input name="contact" value="${v("contact")}" placeholder="Pour le « Bonjour »"></label>
-      <label class="champ"><span>CV à joindre</span><select name="cv">${optionsCV(CVS[c.cv] ? c.cv : "carriere")}</select></label>
+      <label class="champ"><span>CV à joindre</span><select name="cv">${optionsCV(existeCV(c.cv) ? c.cv : "carriere")}</select></label>
       <label class="champ"><span>Type</span><select name="type">${[["offre", "Offre publiée"], ["spontanee", "Candidature spontanée"], ["temporaire", "Emploi temporaire"]].map(([k, n]) => `<option value="${k}" ${c.type === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <label class="champ"><span>Priorité</span><select name="priorite">${[[1, "Haute"], [2, "Normale"], [3, "Basse"]].map(([p, n]) => `<option value="${p}" ${Number(c.priorite || 2) === p ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <label class="champ"><span>Date limite</span><input name="echeance" type="date" value="${v("echeance")}"></label>
@@ -1107,7 +1111,7 @@ function ouvrirComposeur(o = {}) {
       <label class="champ"><span>Cci</span><input name="cci" value="${E(o.cci ?? reg.cci ?? "")}"></label>
       <label class="champ large"><span>Objet</span><input name="sujet" value="${E(o.sujet || "")}"></label>
       <label class="champ"><span>Modèle</span><select name="modele"><option value="">Choisir un modèle...</option>${mods.map((m) => `<option value="${m.id}">${E(m.nom)}</option>`).join("")}</select></label>
-      <label class="champ"><span>CV en pièce jointe</span><select name="piece"><option value="">Aucun</option>${Object.values(CVS).map((x) => `<option value="${x.v}" ${o.piece === x.v ? "selected" : ""}>${x.court} (${x.fichier})</option>`).join("")}</select></label>
+      <label class="champ"><span>CV en pièce jointe</span><select name="piece"><option value="">Aucun</option>${listeCVS().map((x) => `<option value="${x.v}" ${o.piece === x.v ? "selected" : ""}>${E(x.court)} (${E(x.fichier)})</option>`).join("")}</select></label>
       <label class="champ large"><span>Message</span><textarea name="texte" rows="14">${E(o.texte || "")}</textarea></label>
       <label class="champ large"><span>Autres pièces jointes</span><input type="file" name="fichiers" multiple></label>
     </div>`,
@@ -1267,9 +1271,9 @@ function pOffres() {
   <details class="carte plus-loin"><summary><h2>Les sites lus</h2><span class="aide" id="sources-resume"></span></summary><div id="sources-off"><p class="vide">Chargement...</p></div></details>
   <details class="carte plus-loin"><summary><h2>Tes profils sur les sites d'emploi</h2><span class="aide">${(etat.d.plateformes || []).filter((p) => p.profilCree).length}/${(etat.d.plateformes || []).length} faits</span></summary>
     <p class="aide">Crée ton compte sur chaque site, mets-y ton CV, puis coche ici.</p>
-    <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${(CVS[p.profil] || CVS.carriere).nom}</small></div>
+    <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${E(infoCV(p.profil).nom)}</small></div>
       <div class="actions"><label class="aide"><input type="checkbox" data-plat="${i}" data-k="profilCree" ${p.profilCree ? "checked" : ""}> Compte créé</label>
-      <select class="choix" data-plat="${i}" data-k="cvTeleverse"><option value="">CV pas encore mis</option>${Object.values(CVS).map((x) => `<option value="${x.v}" ${p.cvTeleverse === x.v ? "selected" : ""}>${x.court} en ligne</option>`).join("")}</select></div></li>`).join("")}</ul></details>`;
+      <select class="choix" data-plat="${i}" data-k="cvTeleverse"><option value="">CV pas encore mis</option>${listeCVS().map((x) => `<option value="${x.v}" ${p.cvTeleverse === x.v ? "selected" : ""}>${E(x.court)} en ligne</option>`).join("")}</select></div></li>`).join("")}</ul></details>`;
   $("#rech-off").oninput = (e) => { etat.rechOffres = e.target.value; listerOffres(); };
   $$("[data-plat]").forEach((el) => { el.onchange = () => { const p = etat.d.plateformes[el.dataset.plat]; p[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value; sauver("plateformes"); }; });
   $("#det-carte").ontoggle = (e) => { if (e.target.open) { etat.carteCadree = false; majCarte(($("#liste-off") || {})._offres || []); if (etat.offres?.geoAttente > 0) localiserOffres(); } };
@@ -1384,16 +1388,22 @@ function offreParId(id) { return (($("#liste-off") || {})._offres || []).find((x
 // ======================================================================
 // CV
 // ======================================================================
+const CV_VIDE = () => ({ nom: "SYLVAIN BROCHU", titre: "", courriel: "info@sylvainbrochu.ca", telephone: "514-299-5986", linkedin: "https://www.linkedin.com/in/sylvain-brochu-profil", site: "https://www.sylvainbrochu.ca/", lieu: "Montréal, Québec | Disponible immédiatement", disposition: "une_ligne", compact: true, profil: "", titreCompetences: "Compétences clés", competences: [], titreExperiences: "Expériences professionnelles", experiences: [], sections: [] });
+
 function pCV() {
-  const v = etat.cvOnglet; const cle = `cv-${v}`; const cv = etat.d[cle];
-  const AIDE_CV = {
-    carriere: "Ton CV carrière est celui de ton site. « Publier sur le site » remplace le PDF que les visiteurs téléchargent, et celui joint à tes courriels.",
-    barman: "Ton CV barman sert aux emplois en bar et service. Il n'est jamais affiché sur ton site, seulement joint à tes courriels.",
-    service: "Ton CV accueil et service à la clientèle sert aux postes d'accueil, de réception et de service client. Il n'est jamais affiché sur ton site, seulement joint à tes courriels.",
-  };
-  $("#page").innerHTML = entete("Mon CV", AIDE_CV[v] || AIDE_CV.carriere,
-    `<a class="btn" href="/api/cv/?v=${v}" target="_blank" rel="noopener">Voir le CV actuel</a><button class="btn" data-act="cv-pdf">Télécharger ce PDF</button><button class="btn plein" data-act="cv-publier">${v === "carriere" ? "Publier sur le site" : "L'utiliser dans les courriels"}</button>`) + `
-  <div class="filtres">${[["carriere", "CV carrière (sur le site)"], ["barman", "CV barman (privé)"], ["service", "CV accueil et service (privé)"]].map(([k, n]) => `<button type="button" data-cv="${k}" aria-pressed="${k === v}">${n}</button>`).join("")}</div>
+  if (!existeCV(etat.cvOnglet)) etat.cvOnglet = listeCVS()[0].v;
+  const v = etat.cvOnglet; const cle = `cv-${v}`; const info = infoCV(v);
+  if (!etat.d[cle]) etat.d[cle] = CV_VIDE();
+  const cv = etat.d[cle];
+  const aide = info.surLeSite || v === "carriere"
+    ? "Ton CV carrière est celui de ton site. « Publier sur le site » remplace le PDF que les visiteurs téléchargent, et celui joint à tes courriels."
+    : `Ton ${info.court.toLowerCase()} n'est jamais affiché sur ton site, il est seulement joint à tes courriels quand tu le choisis.`;
+  $("#page").innerHTML = entete("Mon CV", aide,
+    `<button class="btn" data-act="cv-importer">Importer un CV</button><a class="btn" href="/api/cv/?v=${v}" target="_blank" rel="noopener">Voir le CV actuel</a><button class="btn" data-act="cv-pdf">Télécharger ce PDF</button><button class="btn plein" data-act="cv-publier">${v === "carriere" ? "Publier sur le site" : "L'utiliser dans les courriels"}</button>`) + `
+  <div class="filtres">${listeCVS().map((x) => `<button type="button" data-cv="${x.v}" aria-pressed="${x.v === v}">${E(x.court)}${x.v === "carriere" ? " (sur le site)" : " (privé)"}</button>`).join("")}
+    <button type="button" data-act="cv-nouveau" class="cv-plus">+ Nouvelle version</button></div>
+  <div class="cv-barre-version"><span>Version ouverte : <b>${E(info.court)}</b></span>
+    <span class="actions"><button class="btn petit" data-act="cv-renommer">Renommer</button>${v === "carriere" ? "" : `<button class="btn petit danger" data-act="cv-supprimer">Supprimer cette version</button>`}</span></div>
   <div class="cv-grille">
     <div class="pile" id="ed-cv">
       <section class="carte"><h2>En-tête</h2><div class="grille-form">
@@ -1439,7 +1449,7 @@ function apercuCV() {
   el.innerHTML = `<h1>${p(cv.nom)}</h1><p class="tt">${p(cv.titre)}</p>
     <p class="ct">📧 ${p(cv.courriel)} | 📞 ${p(cv.telephone)}</p><p class="ct">🔗 LinkedIn: <a>${p(cv.linkedin)}</a></p><p class="ct">🔗 Portfolio &amp; site web: <a>${p(cv.site)}</a></p><p class="ct">📍 ${p(cv.lieu)}</p>
     ${cv.profil ? `<h2>Profil</h2><p class="ct">${p(cv.profil)}</p>` : ""}
-    ${(cv.competences || []).length ? `<h2>${p(cv.titreCompetences || "Compétences clés")}</h2><ul>${cv.competences.map((x) => `<li><b>${p(x.label)} :</b> ${p(x.texte)}</li>`).join("")}</ul>` : ""}
+    ${(cv.competences || []).length ? `<h2>${p(cv.titreCompetences || "Compétences clés")}</h2><ul>${cv.competences.map((x) => `<li>${x.label ? `<b>${p(x.label)}${x.texte ? " :" : ""}</b> ` : ""}${p(x.texte)}</li>`).join("")}</ul>` : ""}
     ${(cv.experiences || []).length ? `<h2>${p(cv.titreExperiences || "Expériences professionnelles")}</h2>${cv.experiences.map((x) => cv.disposition === "une_ligne"
       ? `<div class="ligne"><p class="po">${p(x.poste)}${x.employeur ? " - " + p(x.employeur) : ""}</p><p class="po li">${p(x.lieu)}</p></div><ul>${(x.puces || []).map((y) => `<li>${p(y)}</li>`).join("")}</ul>`
       : `<p class="po">${p(x.poste)}${x.employeur ? " - " + p(x.employeur) : ""}</p><p class="li">${p(x.lieu)}</p><ul>${(x.puces || []).map((y) => `<li>${p(y)}</li>`).join("")}</ul>`).join("")}` : ""}
@@ -1458,6 +1468,165 @@ async function actionCV(a, el) {
   }
   sauver(cle); pCV();
 }
+// ---------- Versions de CV : créer, renommer, supprimer, importer ----------
+const slugCV = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "cv";
+function slugLibre(base) {
+  let s = slugCV(base), n = 2;
+  while (existeCV(s)) s = `${slugCV(base)}-${n++}`;
+  return s;
+}
+const nomFichierCV = (nom) => `Sylvain-Brochu-CV-${slugCV(nom).split("-").map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join("-")}.pdf`;
+
+// Ajoute une version à la liste et ouvre son onglet.
+async function ajouterVersion(nom, donnees) {
+  const v = slugLibre(nom);
+  const court = /^cv\b/i.test(nom.trim()) ? nom.trim() : `CV ${nom.trim()}`;
+  etat.d.cvs = [...listeCVS(), { v, nom: nom.trim().toLowerCase(), court, fichier: nomFichierCV(nom) }];
+  etat.d[`cv-${v}`] = donnees;
+  await sauver(`cv-${v}`);
+  await sauver("cvs");
+  etat.cvOnglet = v;
+  pCV();
+  return v;
+}
+
+function nouveauCV() {
+  ouvrirModale("Nouvelle version de CV",
+    `<label class="champ large"><span>Nom de cette version</span><input name="nom" placeholder="Par exemple : chargé de projet, réception, livraison"></label>
+     <p class="aide">Tu pars d'un CV vide. Pour partir d'un fichier que tu as déjà, utilise plutôt « Importer un CV ».</p>`,
+    `<span></span><button class="btn plein" data-m="ok">Créer</button>`, (m) => {
+      const go = async () => {
+        const nom = $('[name="nom"]', m).value.trim();
+        if (!nom) return toast("Donne un nom à cette version.", true);
+        fermerModale();
+        const cv = CV_VIDE(); cv.titre = nom;
+        await ajouterVersion(nom, cv);
+        toast(`« ${nom} » est créé. Remplis-le ici, puis clique « L'utiliser dans les courriels ».`);
+      };
+      $('[data-m="ok"]', m).onclick = go;
+      $('[name="nom"]', m).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } };
+    });
+}
+
+function renommerCV() {
+  const info = infoCV(etat.cvOnglet);
+  ouvrirModale("Renommer cette version",
+    `<label class="champ large"><span>Nom affiché</span><input name="court" value="${E(info.court)}"></label>
+     <p class="aide">C'est le nom que tu vois dans l'admin et dans le choix du CV à joindre. L'adresse du CV ne change pas.</p>`,
+    `<span></span><button class="btn plein" data-m="ok">Enregistrer</button>`, (m) => {
+      $('[data-m="ok"]', m).onclick = async () => {
+        const court = $('[name="court"]', m).value.trim();
+        if (!court) return toast("Le nom ne peut pas être vide.", true);
+        etat.d.cvs = listeCVS().map((x) => (x.v === info.v ? { ...x, court, nom: court.replace(/^cv\s*/i, "").toLowerCase() } : x));
+        await sauver("cvs");
+        fermerModale(); pCV(); toast("Nom changé.");
+      };
+    });
+}
+
+function supprimerCV() {
+  const info = infoCV(etat.cvOnglet);
+  if (info.v === "carriere") return;
+  ouvrirModale("Supprimer cette version",
+    `<p>Supprimer <b>${E(info.court)}</b> ? Son contenu et son PDF sont effacés. Tes candidatures qui l'utilisaient reprendront le CV carrière.</p>`,
+    `<span></span><button class="btn danger" data-m="ok">Supprimer</button>`, (m) => {
+      $('[data-m="ok"]', m).onclick = async () => {
+        try { await api(`/api/donnees/?cle=cv-${info.v}`, { method: "DELETE" }); } catch (e) { return toast(e.message, true); }
+        etat.d.cvs = listeCVS().filter((x) => x.v !== info.v);
+        delete etat.d[`cv-${info.v}`];
+        await sauver("cvs");
+        etat.cvOnglet = "carriere";
+        fermerModale(); pCV(); toast(`${info.court} supprimé.`);
+      };
+    });
+}
+
+// Importer un CV : Sylvain envoie son fichier (ou colle le texte), on le range dans la mise en
+// page du site, puis il corrige ce qu'il veut dans l'éditeur. Rien n'est publié tant qu'il ne
+// clique pas « Publier sur le site » ou « L'utiliser dans les courriels ».
+function importerCV() {
+  let enCours = false;
+  ouvrirModale("Importer un CV", `
+    <p class="aide">Envoie le CV que tu as déjà (Word, PDF ou texte). Je le remets dans la même mise en page que tes autres CV, et tu le corriges ici avant de l'utiliser.</p>
+    <label class="champ large"><span>Nom de cette version</span><input name="nom" placeholder="Par exemple : chargé de projet"></label>
+    <div class="imp-depot" id="imp-depot">
+      <label class="btn">Choisir un fichier<input type="file" accept=".docx,.pdf,.txt,.rtf,.html,.htm" hidden></label>
+      <span id="imp-nom">Aucun fichier choisi. Word (.docx) donne le meilleur résultat.</span>
+    </div>
+    <details class="imp-coller"><summary>Ou coller le texte du CV</summary>
+      <textarea name="texte" rows="7" placeholder="Colle ici tout le texte du CV."></textarea></details>
+    <label class="champ large" style="margin-top:12px"><span>Où le mettre</span><select name="cible">
+      <option value="">Créer une nouvelle version</option>
+      ${listeCVS().map((x) => `<option value="${x.v}">Remplacer ${E(x.court)}</option>`).join("")}
+    </select></label>
+    <p class="aide imp-attente" hidden><span class="tourne"></span> Lecture du CV...</p>
+    <div id="imp-resultat"></div>`,
+  `<span></span><button class="btn plein" data-m="lire">Lire ce CV</button>`, (m) => {
+    let fichier = null, lu = null;
+    const champFichier = $('input[type="file"]', m);
+    champFichier.onchange = () => {
+      fichier = champFichier.files[0] || null;
+      $("#imp-nom", m).textContent = fichier ? fichier.name : "Aucun fichier choisi.";
+      if (fichier && !$('[name="nom"]', m).value.trim()) $('[name="nom"]', m).value = fichier.name.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ").trim();
+    };
+
+    const lireFichier = (f) => new Promise((ok, non) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => non(new Error("Fichier illisible.")); r.readAsDataURL(f); });
+
+    $('[data-m="lire"]', m).onclick = async () => {
+      if (enCours) return;
+      const nom = $('[name="nom"]', m).value.trim();
+      const texte = $('[name="texte"]', m).value.trim();
+      if (!fichier && !texte) return toast("Choisis un fichier ou colle le texte du CV.", true);
+      if (!nom && !$('[name="cible"]', m).value) return toast("Donne un nom à cette version.", true);
+      enCours = true; $(".imp-attente", m).hidden = false; $('[data-m="lire"]', m).disabled = true; $("#imp-resultat", m).innerHTML = "";
+      try {
+        const corps = texte ? { nom, texte } : { nom, nomFichier: fichier.name, fichier: await lireFichier(fichier) };
+        lu = await api("/api/cv/?action=importer", { method: "POST", body: corps });
+        montrer(lu);
+      } catch (e) {
+        toast(e.code === "REFUS" ? e.message : "Lecture impossible : " + e.message, true);
+      }
+      // « montrer » remplace le pied de la fenêtre : le bouton « Lire » peut déjà avoir disparu.
+      enCours = false;
+      const attente = $(".imp-attente", m); if (attente) attente.hidden = true;
+      const bLire = $('[data-m="lire"]', m); if (bLire) bLire.disabled = false;
+    };
+
+    const montrer = (r) => {
+      const c = r.cv;
+      $("#imp-resultat", m).innerHTML = `
+        <div class="imp-bilan">
+          <h3>Ce que j'ai trouvé</h3>
+          <ul>
+            <li><b>${E(c.nom)}</b>${c.titre ? " - " + E(c.titre) : ""}</li>
+            <li>${c.profil ? "Profil repris" : "Pas de profil trouvé"}</li>
+            <li>${(c.competences || []).length} compétence${(c.competences || []).length > 1 ? "s" : ""}</li>
+            <li>${(c.experiences || []).length} poste${(c.experiences || []).length > 1 ? "s" : ""}${(c.experiences || []).length ? " : " + E(c.experiences.map((x) => x.poste).filter(Boolean).slice(0, 4).join(", ")) : ""}</li>
+            <li>${(c.sections || []).length} autre${(c.sections || []).length > 1 ? "s" : ""} section${(c.sections || []).length > 1 ? "s" : ""}${(c.sections || []).length ? " : " + E(c.sections.map((x) => x.titre).join(", ")) : ""}</li>
+          </ul>
+          ${r.manques.length ? `<p class="aide">Je n'ai pas reconnu ${E(r.manques.join(" ni "))}. Tu pourras l'écrire toi-même dans l'éditeur.</p>` : `<p class="aide">Tout est repris. Vérifie quand même les dates et les noms d'employeurs avant de l'utiliser.</p>`}
+        </div>`;
+      $("footer", m).innerHTML = `<button class="btn" data-m="annuler">Annuler</button><button class="btn plein" data-m="garder">Mettre dans l'éditeur</button>`;
+      $('[data-m="annuler"]', m).onclick = fermerModale;
+      $('[data-m="garder"]', m).onclick = async () => {
+        const cible = $('[name="cible"]', m).value;
+        const nom = $('[name="nom"]', m).value.trim() || r.cv.titre || "nouveau CV";
+        fermerModale();
+        if (cible) {
+          etat.d[`cv-${cible}`] = r.cv;
+          await sauver(`cv-${cible}`);
+          etat.cvOnglet = cible; pCV();
+          toast(`${infoCV(cible).court} remplacé. Relis-le, puis clique « ${cible === "carriere" ? "Publier sur le site" : "L'utiliser dans les courriels"} ».`);
+        } else {
+          const v = await ajouterVersion(nom, r.cv);
+          toast(`${infoCV(v).court} créé à partir de ton fichier. Relis-le, puis clique « L'utiliser dans les courriels ».`);
+        }
+      };
+    };
+  });
+}
+
 async function pdfCV(publier) {
   const v = etat.cvOnglet; const cv = etat.d[`cv-${v}`];
   toast("Création du PDF...");
@@ -1465,9 +1634,9 @@ async function pdfCV(publier) {
     await sauver(`cv-${v}`);
     const r = await genererPDF(cv);
     $("#pages-cv") && ($("#pages-cv").textContent = `Le PDF fait ${r.pages} page${r.pages > 1 ? "s" : ""}.`);
-    if (!publier) { r.doc.download((CVS[v] || CVS.carriere).fichier); return; }
+    if (!publier) { r.doc.download(infoCV(v).fichier); return; }
     await api(`/api/cv/?v=${v}`, { method: "POST", body: { pdf: r.base64 } });
-    toast(v === "carriere" ? `CV publié sur le site (${r.pages} pages). Il est aussi joint à tes prochains courriels.` : `${(CVS[v] || CVS.carriere).court} enregistré (${r.pages} page${r.pages > 1 ? "s" : ""}). Il sera joint à tes courriels quand tu le choisis.`);
+    toast(v === "carriere" ? `CV publié sur le site (${r.pages} pages). Il est aussi joint à tes prochains courriels.` : `${infoCV(v).court} enregistré (${r.pages} page${r.pages > 1 ? "s" : ""}). Il sera joint à tes courriels quand tu le choisis.`);
   } catch (e) { toast("PDF impossible : " + e.message, true); }
 }
 
@@ -1689,6 +1858,10 @@ document.addEventListener("click", async (e) => {
       });
     case "cv-pdf": return pdfCV(false);
     case "cv-publier": return pdfCV(true);
+    case "cv-importer": return importerCV();
+    case "cv-nouveau": return nouveauCV();
+    case "cv-renommer": return renommerCV();
+    case "cv-supprimer": return supprimerCV();
     case "ajout-modele": etat.d.modeles.unshift({ id: uid(), nom: "Nouveau modèle", objet: "", corps: "Bonjour{contact},\n\n\n\n{signature}", cv: "" }); sauver("modeles"); return pModeles();
     case "retirer-modele": {
       if (t.dataset.ok !== "1") { t.dataset.ok = "1"; t.textContent = "Confirmer"; return; }

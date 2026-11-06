@@ -35,7 +35,7 @@ export function construireCV(cv) {
   if (c.profil) { contenu.push(titre("Profil")); contenu.push({ text: propre(c.profil) }); }
   if ((c.competences || []).length) {
     contenu.push(titre(c.titreCompetences || "Compétences clés"));
-    contenu.push(puces(c.competences.filter((x) => x.label || x.texte).map((x) => ({ text: [{ text: propre(x.label) + (x.texte ? " : " : ""), bold: true }, propre(x.texte)] }))));
+    contenu.push(puces(c.competences.filter((x) => x.label || x.texte).map((x) => ({ text: [{ text: propre(x.label) + (x.label && x.texte ? " : " : ""), bold: true }, propre(x.texte)] }))));
   }
   if ((c.experiences || []).length) {
     contenu.push(titre(c.titreExperiences || "Expériences professionnelles"));
