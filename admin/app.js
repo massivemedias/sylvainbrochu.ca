@@ -790,7 +790,13 @@ function changerStatut(c, s) {
 }
 
 const detailsEssayes = new Set(); // une lecture automatique par fiche et par session
-const cvDe = (c) => (c.cv === "barman" ? { v: "barman", nom: "barman", fichier: "Sylvain-Brochu-CV-Bar.pdf" } : { v: "carriere", nom: "carrière", fichier: "Sylvain-Brochu-CV.pdf" });
+const CVS = {
+  carriere: { v: "carriere", nom: "carrière", court: "CV carrière", fichier: "Sylvain-Brochu-CV.pdf" },
+  barman: { v: "barman", nom: "barman", court: "CV barman", fichier: "Sylvain-Brochu-CV-Bar.pdf" },
+  service: { v: "service", nom: "accueil et service", court: "CV accueil et service", fichier: "Sylvain-Brochu-CV-Service.pdf" },
+};
+const cvDe = (c) => CVS[c.cv] || CVS.carriere;
+const optionsCV = (val, aucun = "") => (aucun ? `<option value="">${aucun}</option>` : "") + Object.values(CVS).map((x) => `<option value="${x.v}" ${val === x.v ? "selected" : ""}>${x.court}</option>`).join("");
 // Le guide en haut de la fiche : comment je postule à cette offre, étape par étape, avec les boutons au bon endroit.
 function guidePostuler(c) {
   const cv = cvDe(c);
@@ -845,7 +851,7 @@ function ficheCandidature(c, nouvelle = false) {
       <label class="champ large"><span>Lien du formulaire (pour postuler sur le site)</span><input name="formulaire" type="url" value="${v("formulaire")}"></label>
       <label class="champ large"><span>Lien de l'offre</span><input name="lien" type="url" value="${v("lien")}"></label>
       <label class="champ"><span>Nom du contact</span><input name="contact" value="${v("contact")}" placeholder="Pour le « Bonjour »"></label>
-      <label class="champ"><span>CV à joindre</span><select name="cv"><option value="carriere" ${c.cv !== "barman" ? "selected" : ""}>CV carrière</option><option value="barman" ${c.cv === "barman" ? "selected" : ""}>CV barman</option></select></label>
+      <label class="champ"><span>CV à joindre</span><select name="cv">${optionsCV(CVS[c.cv] ? c.cv : "carriere")}</select></label>
       <label class="champ"><span>Type</span><select name="type">${[["offre", "Offre publiée"], ["spontanee", "Candidature spontanée"], ["temporaire", "Emploi temporaire"]].map(([k, n]) => `<option value="${k}" ${c.type === k ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <label class="champ"><span>Priorité</span><select name="priorite">${[[1, "Haute"], [2, "Normale"], [3, "Basse"]].map(([p, n]) => `<option value="${p}" ${Number(c.priorite || 2) === p ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <label class="champ"><span>Date limite</span><input name="echeance" type="date" value="${v("echeance")}"></label>
@@ -995,7 +1001,7 @@ function posteNet(p) {
   return /^\p{Lu}\p{Ll}/u.test(s) ? s[0].toLowerCase() + s.slice(1) : s;
 }
 function lettrePour(c) {
-  const temp = c.type === "temporaire" || c.cv === "barman";
+  const temp = c.type === "temporaire" || c.cv === "barman" || c.cv === "service";
   const source = `${c.poste || ""} ${c.description || ""}`;
   const choix = POINTS[temp ? "temporaire" : "carriere"]
     .map(([re, phrase], i) => ({ i, phrase, n: (source.match(re) || []).length }))
@@ -1101,7 +1107,7 @@ function ouvrirComposeur(o = {}) {
       <label class="champ"><span>Cci</span><input name="cci" value="${E(o.cci ?? reg.cci ?? "")}"></label>
       <label class="champ large"><span>Objet</span><input name="sujet" value="${E(o.sujet || "")}"></label>
       <label class="champ"><span>Modèle</span><select name="modele"><option value="">Choisir un modèle...</option>${mods.map((m) => `<option value="${m.id}">${E(m.nom)}</option>`).join("")}</select></label>
-      <label class="champ"><span>CV en pièce jointe</span><select name="piece"><option value="">Aucun</option><option value="carriere" ${o.piece === "carriere" ? "selected" : ""}>CV carrière (Sylvain-Brochu-CV.pdf)</option><option value="barman" ${o.piece === "barman" ? "selected" : ""}>CV barman (Sylvain-Brochu-CV-Bar.pdf)</option></select></label>
+      <label class="champ"><span>CV en pièce jointe</span><select name="piece"><option value="">Aucun</option>${Object.values(CVS).map((x) => `<option value="${x.v}" ${o.piece === x.v ? "selected" : ""}>${x.court} (${x.fichier})</option>`).join("")}</select></label>
       <label class="champ large"><span>Message</span><textarea name="texte" rows="14">${E(o.texte || "")}</textarea></label>
       <label class="champ large"><span>Autres pièces jointes</span><input type="file" name="fichiers" multiple></label>
     </div>`,
@@ -1261,9 +1267,9 @@ function pOffres() {
   <details class="carte plus-loin"><summary><h2>Les sites lus</h2><span class="aide" id="sources-resume"></span></summary><div id="sources-off"><p class="vide">Chargement...</p></div></details>
   <details class="carte plus-loin"><summary><h2>Tes profils sur les sites d'emploi</h2><span class="aide">${(etat.d.plateformes || []).filter((p) => p.profilCree).length}/${(etat.d.plateformes || []).length} faits</span></summary>
     <p class="aide">Crée ton compte sur chaque site, mets-y ton CV, puis coche ici.</p>
-    <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${p.profil === "barman" ? "barman" : "carrière"}</small></div>
+    <ul class="liste">${(etat.d.plateformes || []).map((p, i) => `<li><div class="t"><b><a href="${E(p.compte)}" target="_blank" rel="noopener">${E(p.nom)}</a></b><small>CV conseillé : ${(CVS[p.profil] || CVS.carriere).nom}</small></div>
       <div class="actions"><label class="aide"><input type="checkbox" data-plat="${i}" data-k="profilCree" ${p.profilCree ? "checked" : ""}> Compte créé</label>
-      <select class="choix" data-plat="${i}" data-k="cvTeleverse"><option value="">CV pas encore mis</option><option value="carriere" ${p.cvTeleverse === "carriere" ? "selected" : ""}>CV carrière en ligne</option><option value="barman" ${p.cvTeleverse === "barman" ? "selected" : ""}>CV barman en ligne</option></select></div></li>`).join("")}</ul></details>`;
+      <select class="choix" data-plat="${i}" data-k="cvTeleverse"><option value="">CV pas encore mis</option>${Object.values(CVS).map((x) => `<option value="${x.v}" ${p.cvTeleverse === x.v ? "selected" : ""}>${x.court} en ligne</option>`).join("")}</select></div></li>`).join("")}</ul></details>`;
   $("#rech-off").oninput = (e) => { etat.rechOffres = e.target.value; listerOffres(); };
   $$("[data-plat]").forEach((el) => { el.onchange = () => { const p = etat.d.plateformes[el.dataset.plat]; p[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value; sauver("plateformes"); }; });
   $("#det-carte").ontoggle = (e) => { if (e.target.open) { etat.carteCadree = false; majCarte(($("#liste-off") || {})._offres || []); if (etat.offres?.geoAttente > 0) localiserOffres(); } };
@@ -1380,9 +1386,14 @@ function offreParId(id) { return (($("#liste-off") || {})._offres || []).find((x
 // ======================================================================
 function pCV() {
   const v = etat.cvOnglet; const cle = `cv-${v}`; const cv = etat.d[cle];
-  $("#page").innerHTML = entete("Mon CV", v === "carriere" ? "Ton CV carrière est celui de ton site. « Publier sur le site » remplace le PDF que les visiteurs téléchargent, et celui joint à tes courriels." : "Ton CV barman sert aux emplois en bar et service. Il n'est jamais affiché sur ton site, seulement joint à tes courriels.",
+  const AIDE_CV = {
+    carriere: "Ton CV carrière est celui de ton site. « Publier sur le site » remplace le PDF que les visiteurs téléchargent, et celui joint à tes courriels.",
+    barman: "Ton CV barman sert aux emplois en bar et service. Il n'est jamais affiché sur ton site, seulement joint à tes courriels.",
+    service: "Ton CV accueil et service à la clientèle sert aux postes d'accueil, de réception et de service client. Il n'est jamais affiché sur ton site, seulement joint à tes courriels.",
+  };
+  $("#page").innerHTML = entete("Mon CV", AIDE_CV[v] || AIDE_CV.carriere,
     `<a class="btn" href="/api/cv/?v=${v}" target="_blank" rel="noopener">Voir le CV actuel</a><button class="btn" data-act="cv-pdf">Télécharger ce PDF</button><button class="btn plein" data-act="cv-publier">${v === "carriere" ? "Publier sur le site" : "L'utiliser dans les courriels"}</button>`) + `
-  <div class="filtres">${[["carriere", "CV carrière (sur le site)"], ["barman", "CV barman (privé)"]].map(([k, n]) => `<button type="button" data-cv="${k}" aria-pressed="${k === v}">${n}</button>`).join("")}</div>
+  <div class="filtres">${[["carriere", "CV carrière (sur le site)"], ["barman", "CV barman (privé)"], ["service", "CV accueil et service (privé)"]].map(([k, n]) => `<button type="button" data-cv="${k}" aria-pressed="${k === v}">${n}</button>`).join("")}</div>
   <div class="cv-grille">
     <div class="pile" id="ed-cv">
       <section class="carte"><h2>En-tête</h2><div class="grille-form">
@@ -1454,9 +1465,9 @@ async function pdfCV(publier) {
     await sauver(`cv-${v}`);
     const r = await genererPDF(cv);
     $("#pages-cv") && ($("#pages-cv").textContent = `Le PDF fait ${r.pages} page${r.pages > 1 ? "s" : ""}.`);
-    if (!publier) { r.doc.download(v === "barman" ? "Sylvain-Brochu-CV-Bar.pdf" : "Sylvain-Brochu-CV.pdf"); return; }
+    if (!publier) { r.doc.download((CVS[v] || CVS.carriere).fichier); return; }
     await api(`/api/cv/?v=${v}`, { method: "POST", body: { pdf: r.base64 } });
-    toast(v === "carriere" ? `CV publié sur le site (${r.pages} pages). Il est aussi joint à tes prochains courriels.` : `CV barman enregistré (${r.pages} page${r.pages > 1 ? "s" : ""}). Il sera joint à tes courriels pour le bar et le service.`);
+    toast(v === "carriere" ? `CV publié sur le site (${r.pages} pages). Il est aussi joint à tes prochains courriels.` : `${(CVS[v] || CVS.carriere).court} enregistré (${r.pages} page${r.pages > 1 ? "s" : ""}). Il sera joint à tes courriels quand tu le choisis.`);
   } catch (e) { toast("PDF impossible : " + e.message, true); }
 }
 
@@ -1504,7 +1515,7 @@ function pModeles() {
   $("#page").innerHTML = entete("Modèles de courriels", "Tes textes prêts pour les candidatures, relances et remerciements. Ces mots se remplacent tout seuls : {entreprise}, {poste}, {contact}, {envoyeLe}, {signature}.",
     `<button class="btn laiton" data-act="ajout-modele">Nouveau modèle</button>`) + `<div class="pile" id="mods">${mods.map((m, i) => `<section class="carte"><div class="grille-form">
       <label class="champ"><span>Nom</span><input data-mod="${i}" data-mk="nom" value="${E(m.nom)}"></label>
-      <label class="champ"><span>CV joint par défaut</span><select data-mod="${i}" data-mk="cv"><option value="" ${!m.cv ? "selected" : ""}>Aucun</option><option value="carriere" ${m.cv === "carriere" ? "selected" : ""}>Carrière</option><option value="barman" ${m.cv === "barman" ? "selected" : ""}>Barman</option></select></label>
+      <label class="champ"><span>CV joint par défaut</span><select data-mod="${i}" data-mk="cv">${optionsCV(m.cv, "Aucun")}</select></label>
       <label class="champ large"><span>Objet</span><input data-mod="${i}" data-mk="objet" value="${E(m.objet)}"></label>
       <label class="champ large"><span>Message</span><textarea data-mod="${i}" data-mk="corps" rows="9">${E(m.corps)}</textarea></label></div>
       <div class="actions" style="justify-content:flex-end;margin-top:10px"><button class="btn petit danger" data-act="retirer-modele" data-i="${i}">Supprimer</button></div></section>`).join("")}</div>`;

@@ -189,9 +189,9 @@ export async function piece(dossier, uid, index) {
 
 // ---------- CV en pièce jointe ----------
 export async function pdfCV(version) {
-  const v = version === "barman" ? "barman" : "carriere";
+  const v = version === "barman" || version === "service" ? version : "carriere";
   const b64 = await cmd("GET", `sb:cvpdf:${v}`);
-  const nom = v === "barman" ? "Sylvain-Brochu-CV-Bar.pdf" : "Sylvain-Brochu-CV.pdf";
+  const nom = { carriere: "Sylvain-Brochu-CV.pdf", barman: "Sylvain-Brochu-CV-Bar.pdf", service: "Sylvain-Brochu-CV-Service.pdf" }[v];
   if (b64) return { nom, contenu: Buffer.from(b64, "base64") };
   return { nom, contenu: await readFile(new URL(`../_fichiers/cv-${v}.pdf`, import.meta.url)) };
 }
@@ -219,7 +219,7 @@ async function brutBrouillon(msg) {
 async function composer(m) {
   const r = await reglages();
   const pieces = [];
-  if (m.piece === "carriere" || m.piece === "barman") {
+  if (["carriere", "barman", "service"].includes(m.piece)) {
     const f = await pdfCV(m.piece);
     pieces.push({ filename: f.nom, content: f.contenu, contentType: "application/pdf" });
   }

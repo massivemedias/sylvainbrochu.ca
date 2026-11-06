@@ -3,6 +3,7 @@ import { ACCES_DEFAUT } from "./auth.js";
 import { CANDIDATURES } from "./seed-candidatures.js";
 import { CV_CARRIERE } from "./cv-carriere.js";
 import { CV_BARMAN } from "./cv-barman.js";
+import { CV_SERVICE } from "./cv-service.js";
 import { BOUTIQUE_DEPART } from "./boutique-depart.js";
 
 export const SIGNATURE = "Sylvain Brochu\n514-299-5986 | info@sylvainbrochu.ca\nwww.sylvainbrochu.ca";
@@ -47,6 +48,11 @@ export const MODELES = [
     corps: "Bonjour{contact},\n\nMerci pour votre retour. Je suis disponible aux moments suivants :\n\n- \n- \n- \n\nJe peux me déplacer ou faire la rencontre en visioconférence.\n\nAu plaisir,\n\n{signature}",
   },
   {
+    id: "accueil", nom: "Accueil et service à la clientèle", cv: "service",
+    objet: "Candidature, {poste} - Sylvain Brochu",
+    corps: "Bonjour{contact},\n\nJe vous propose ma candidature au poste de {poste} chez {entreprise}.\n\nJ'ai plus de 20 ans d'expérience au contact du public, en accueil, en salle et en service événementiel à Montréal, jusqu'à 1 500 invités par événement. J'ai aussi coordonné et formé des équipes d'accueil et de service.\n\nJe suis disponible rapidement. Mon CV est joint.\n\nCordialement,\n\n{signature}",
+  },
+  {
     id: "temporaire", nom: "Emploi temporaire (bar, service, événements)", cv: "barman",
     objet: "Candidature, {poste} - Sylvain Brochu",
     corps: "Bonjour{contact},\n\nJe vous propose ma candidature pour un poste de {poste}.\n\nJ'ai plus de 10 ans d'expérience au bar, en salle et en service événementiel à Montréal, du Parking au Club de Golf Métropolitain, et j'ai supervisé des équipes de service lors d'événements jusqu'à 1 500 invités.\n\nJe suis disponible rapidement. Mon CV est joint.\n\nCordialement,\n\n{signature}",
@@ -69,6 +75,7 @@ export const DONNEES_DEFAUT = {
   candidatures: CANDIDATURES,
   "cv-carriere": CV_CARRIERE,
   "cv-barman": CV_BARMAN,
+  "cv-service": CV_SERVICE,
   reglages: REGLAGES,
   modeles: MODELES,
   plateformes: PLATEFORMES.map((p) => ({ ...p, profilCree: false, cvTeleverse: "", note: "" })),
