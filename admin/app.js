@@ -182,6 +182,14 @@ function site() {
 function nettoyer() {
   const FAUX = /@(test\d*\.|example\.|exemple\.|domain\.)/i; let n = 0;
   (etat.d.candidatures || []).forEach((c) => { if (c.courriel && FAUX.test(c.courriel) && !c.envoyeLe) { c.courriel = ""; if (!c.formulaire && c.lien) c.formulaire = c.lien; n++; } });
+  const jwCand = (etat.d.candidatures || []).find((c) => c.id === "jackworld" || /jack\s*world/i.test(c.entreprise || ""));
+  if (jwCand && jwCand.statut === "offre") {
+    jwCand.statut = "refus";
+    jwCand.reponseLe = "2026-11-05";
+    jwCand.reponseTraitee = true;
+    noter(jwCand, "Refus reçu le 5 nov. d'Isabelle Forget : sélectionné un autre candidat (conseil : mieux structurer la planification de projet et le suivi client).");
+    n++;
+  }
   if (n) sauver("candidatures");
 }
 async function demarrer() {
@@ -213,9 +221,12 @@ async function demarrer() {
     allerA();
     boutique().charger().then((change) => { if (change && ["tableau", "boutique"].includes(etat.page) && $("#modale").hidden) rendrePage(); });
     const etatBoite = () => api("/api/courriels/?action=etat").then((m) => (m.pret ? m : new Promise((ok) => setTimeout(ok, 1500)).then(() => api("/api/courriels/?action=etat"))));
-    etatBoite().then((m) => {
+    etatBoite().then(async (m) => {
       etat.mail = m;
-      if (m.pret) chargerARepondre();
+      if (m.pret) {
+        chargerARepondre();
+        await synchroniserBoite(false);
+      }
       if (m.import && m.import.crees.length) toast(`${m.import.crees.length} brouillon${m.import.crees.length > 1 ? "s" : ""} de candidature recréé${m.import.crees.length > 1 ? "s" : ""} dans ${m.boite}.`);
       if (["courriels", "tableau"].includes(etat.page)) rendrePage();
     }).catch(() => { etat.mail = { pret: false, raison: "Erreur" }; });
@@ -426,48 +437,264 @@ const barres = (liste, vide = "Aucune donnée pour cette période.") => {
 // ======================================================================
 // TABLEAU DE BORD
 // ======================================================================
+async function synchroniserBoite(manuel = false) {
+  if (!etat.mail?.pret) {
+    if (manuel) toast("Boîte courriel non connectée.");
+    return;
+  }
+  try {
+    const [recus, envoyes] = await Promise.all([
+      chargerBoite("recus", true),
+      chargerBoite("envoyes", true),
+    ]);
+    let modifs = 0;
+    const cands = etat.d.candidatures || [];
+    const tCad = String.fromCharCode(0x2014);
+    const tDemi = String.fromCharCode(0x2013);
+
+    // 1. Analyse des courriels envoyés
+    (envoyes || []).forEach((m) => {
+      const dest = ((m.a || [])[0]?.courriel || "").toLowerCase();
+      const dateIso = m.date ? m.date.slice(0, 10) : jour();
+
+      if (dest === "pascale@tribu.co") {
+        let c = cands.find((x) => x.id === "tribu" || /tribu/i.test(x.entreprise || ""));
+        if (!c) {
+          c = { id: "tribu", entreprise: "Tribu Expérientiel", poste: "Coordonnateur de production événementielle", ville: "Montréal", contrat: "Temps plein", type: "offre", priorite: 1, courriel: "pascale@tribu.co", cv: "carriere", statut: "envoye", envoyeLe: dateIso, historique: [{ date: dateIso, texte: "Candidature envoyée par courriel à pascale@tribu.co" }] };
+          cands.push(c);
+          modifs++;
+        } else if (c.statut !== "envoye" || c.envoyeLe !== dateIso) {
+          c.statut = "envoye"; c.envoyeLe = dateIso;
+          noter(c, `Candidature confirmée envoyée le ${dateCourte(dateIso)}`);
+          modifs++;
+        }
+      }
+
+      if (dest.includes("marriott.com")) {
+        let c = cands.find((x) => x.id === "sheraton" || /sheraton/i.test(x.entreprise || ""));
+        if (c && c.statut !== "envoye") {
+          c.statut = "envoye"; c.envoyeLe = dateIso;
+          noter(c, `Candidature confirmée envoyée le ${dateCourte(dateIso)}`);
+          modifs++;
+        }
+      }
+
+      if (dest === "rh@vdmt.ca") {
+        let c = cands.find((x) => x.id === "ville-mont-tremblant" || /ville de mont-tremblant/i.test(x.entreprise || ""));
+        if (!c) {
+          c = { id: "ville-mont-tremblant", entreprise: "Ville de Mont-Tremblant", poste: "Gestion de production, opérations et événements", ville: "Mont-Tremblant", type: "temporaire", priorite: 2, courriel: "rh@vdmt.ca", cv: "carriere", statut: "envoye", envoyeLe: dateIso, historique: [{ date: dateIso, texte: "Candidature spontanée envoyée par courriel à rh@vdmt.ca" }] };
+          cands.push(c);
+          modifs++;
+        }
+      }
+
+      if (dest.includes("les7doigts.com")) {
+        let c = cands.find((x) => /7 doigts/i.test(x.entreprise || ""));
+        if (c && c.statut !== "envoye") {
+          c.statut = "envoye"; c.envoyeLe = dateIso;
+          noter(c, `Candidature transmise par courriel le ${dateCourte(dateIso)}`);
+          modifs++;
+        }
+      }
+    });
+
+    // 2. Analyse des accusés de réception et réponses
+    (recus || []).forEach((m) => {
+      const exp = ((m.de || [])[0]?.courriel || "").toLowerCase();
+      const sujet = String(m.sujet || "");
+      const dateIso = m.date ? m.date.slice(0, 10) : jour();
+
+      // Station Mont Tremblant (Alterra / Workday)
+      if (exp.includes("workday.com") || /station mont tremblant/i.test(sujet)) {
+        const parts = sujet.split(":");
+        const poste = (parts.length > 1 ? parts[1].trim() : "Poste événementiel / services").replace(new RegExp("[" + tCad + tDemi + "]", "g"), "-");
+        const idTremblant = "tremblant-" + poste.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
+        let c = cands.find((x) => x.id === idTremblant || (/mont tremblant/i.test(x.entreprise || "") && x.poste?.toLowerCase() === poste.toLowerCase()));
+        if (!c) {
+          c = { id: idTremblant, entreprise: "Station Mont Tremblant", poste, ville: "Mont-Tremblant", type: "temporaire", priorite: 2, courriel: exp, cv: "barman", statut: "envoye", envoyeLe: dateIso, historique: [{ date: dateIso, texte: "Candidature soumise via Workday" }] };
+          cands.push(c);
+          modifs++;
+        }
+      }
+
+      // Scandinave Spa (Dayforce)
+      if (exp.includes("dayforce.com") || /scandinave spa/i.test(sujet)) {
+        const normSujet = sujet.replace(new RegExp("[" + tCad + tDemi + "]", "g"), "-");
+        let poste = "Opérations / Service";
+        const mCand = normSujet.match(/candidature\s*-\s*([^-]+?)(?:\s*-\s*Scandinave Spa|$)/i);
+        if (mCand) poste = mCand[1].trim();
+        const idSpa = "scandinave-" + poste.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
+        let c = cands.find((x) => x.id === idSpa || (/scandinave/i.test(x.entreprise || "") && x.poste?.toLowerCase() === poste.toLowerCase()));
+        if (!c) {
+          c = { id: idSpa, entreprise: "Scandinave Spa", poste, ville: "Mont-Tremblant", type: "temporaire", priorite: 2, courriel: exp, cv: "barman", statut: "envoye", envoyeLe: dateIso, historique: [{ date: dateIso, texte: "Candidature soumise via Dayforce" }] };
+          cands.push(c);
+          modifs++;
+        }
+      }
+
+      // Jack World (Isabelle Forget)
+      if (exp.includes("jackworldinc.com")) {
+        const c = cands.find((x) => x.id === "jackworld" || /jack\s*world/i.test(x.entreprise || ""));
+        if (c) {
+          if (!c.reponseLe) { c.reponseLe = dateIso; modifs++; }
+          if (m.uid === 2958 || dateIso >= "2026-11-05") {
+            if (c.statut !== "refus") {
+              c.statut = "refus";
+              c.reponseLe = dateIso;
+              c.reponseTraitee = true;
+              noter(c, "Refus reçu le 5 nov. d'Isabelle Forget : sélectionné un autre candidat (conseil : mieux structurer la planification de projet et le suivi client).");
+              modifs++;
+            }
+          }
+        }
+      }
+
+      // Show Canada (Sandrine Guérard)
+      if (exp.includes("show-canada.ca")) {
+        const c = cands.find((x) => /show canada/i.test(x.entreprise || ""));
+        if (c && !c.reponseLe) {
+          c.reponseLe = dateIso;
+          noter(c, `Accusé de réception reçu le ${dateCourte(dateIso)} de Sandrine Guérard`);
+          modifs++;
+        }
+      }
+    });
+
+    if (modifs > 0) {
+      sauver("candidatures");
+      majCompteurs();
+      if (["tableau", "candidatures"].includes(etat.page)) rendrePage();
+      if (manuel) toast(`${modifs} dossier${modifs > 1 ? "s" : ""} synchronisé${modifs > 1 ? "s" : ""} depuis tes courriels.`);
+    } else if (manuel) {
+      toast("Tout est déjà parfaitement à jour avec ta boîte courriel.");
+    }
+  } catch (err) {
+    if (manuel) toast("Erreur de synchronisation : " + err.message, true);
+  }
+}
+
+function derniersEchangesAccueil(recus) {
+  const el = $("#d-derniers-echanges");
+  if (!el || etat.page !== "tableau") return;
+  const envoyes = etat.boite.listes.envoyes || [];
+  const tous = [
+    ...(recus || []).map((m) => ({ ...m, sens: "recu" })),
+    ...(envoyes || []).map((m) => ({ ...m, sens: "envoye" })),
+  ].filter((m) => {
+    const s = String(m.sujet || "").toLowerCase();
+    const exp = String(((m.de || [])[0]?.courriel) || "").toLowerCase();
+    const dest = String(((m.a || [])[0]?.courriel) || "").toLowerCase();
+    return /candidature|emploi|poste|jack|tremblant|scandinave|cirque|moment|paradoxe|tribu|marriott|7doigts|show-canada/i.test(s + " " + exp + " " + dest);
+  }).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 5);
+
+  if (!tous.length) {
+    el.innerHTML = `<p class="vide">Aucun échange d'employeur détecté récemment.</p>`;
+    return;
+  }
+  el.innerHTML = `<ul class="liste echanges">${tous.map((m) => {
+    const qui = m.sens === "envoye" ? `À : ${E((m.a || [])[0]?.courriel || "")}` : E((m.de || [])[0]?.nom || (m.de || [])[0]?.courriel || "");
+    const dateStr = dateHeure(m.date);
+    const badge = m.sens === "envoye" ? `<span class="tag-sens envoye">Envoyé</span>` : `<span class="tag-sens recu">Reçu</span>`;
+    return `<li>
+      <div class="t">
+        <div style="display:flex; align-items:center; gap:8px;">
+          ${badge} <b>${qui}</b> <small style="margin-left:auto; color:var(--doux);">${dateStr}</small>
+        </div>
+        <small style="color:var(--texte); margin-top:2px; display:block;">${E(m.sujet)}</small>
+      </div>
+      <div class="actions">
+        <button class="btn petit" data-act="ouvrir-courriel" data-uid="${m.uid}">Lire</button>
+      </div>
+    </li>`;
+  }).join("")}</ul>`;
+}
+
 function pTableau() {
   const c = etat.d.candidatures || [];
   const envoyees = c.filter((x) => x.envoyeLe).length;
   const reponses = c.filter((x) => x.reponseLe).length;
   const entrevues = c.filter((x) => x.entrevueLe || ["entrevue", "offre"].includes(x.statut)).length;
+  const relancesEnRetard = c.filter((x) => { const r = relance(x); return r && r.enRetard; }).length;
   const taches = aFaire();
   const prenom = (etat.u.nom || "").split(" ")[0];
   const t0 = taches[0];
   const notes = typeof etat.d.notes === "string" ? etat.d.notes : "";
   const date = new Date().toLocaleDateString("fr-CA", { weekday: "long", day: "numeric", month: "long" });
-  $("#page").innerHTML = entete(`Bonjour ${E(prenom)}`, `${date[0].toUpperCase() + date.slice(1)}. ${taches.length ? `Tu as ${taches.length} chose${taches.length > 1 ? "s" : ""} à faire.` : "Rien d'urgent aujourd'hui."}`,
-    `<a class="btn" href="/" target="_blank" rel="noopener">Voir le site</a>`) + `
+
+  const scandinaveCount = c.filter((x) => /scandinave/i.test(x.entreprise || "")).length;
+  const jwCand = c.find((x) => x.id === "jackworld" || /jack\s*world/i.test(x.entreprise || ""));
+
+  let bannerHtml = "";
+  if (scandinaveCount > 1) {
+    bannerHtml += `<div class="bandeau-alerte">
+      <b>Attention Scandinave Spa (${scandinaveCount} candidatures actives) :</b> Le système Dayforce n'accepte qu'une seule candidature active par candidat à la fois.
+    </div>`;
+  }
+  if (jwCand && jwCand.statut === "refus") {
+    bannerHtml += `<div class="bandeau-retour">
+      <div class="retour-info">
+        <span class="tag-retour">Retour d'expérience : 5 nov.</span>
+        <h3>Jack World : Chargé de projets</h3>
+        <p>Un autre candidat a été retenu. Conseil pour tes prochaines entrevues : structure davantage tes réponses sur les méthodes de planification, les échéanciers et le suivi client.</p>
+      </div>
+      <button class="btn petit" data-act="fiche" data-id="${jwCand.id}">Voir la fiche</button>
+    </div>`;
+  }
+
+  $("#page").innerHTML = entete(
+    `Bonjour ${E(prenom)}`,
+    `${date[0].toUpperCase() + date.slice(1)}. ${taches.length ? `Tu as ${taches.length} chose${taches.length > 1 ? "s" : ""} à faire.` : "Tout est à jour."}`,
+    `<button class="btn laiton" data-act="sync-tout"><span class="ico-sync">↻</span> Actualiser et synchroniser</button><a class="btn" href="/" target="_blank" rel="noopener">Voir le site</a>`
+  ) + `
+  ${bannerHtml}
+  <div id="d-mails"></div>
   <section class="prochaine">
     <span class="etiquette">Ta prochaine étape</span>
     ${t0 ? `<h2>${E(t0.texte)}</h2><p>${E(t0.detail)}</p><div class="actions">${boutonTache(t0, true)}</div>`
       : `<h2>Choisis une offre qui te plaît</h2><p>De nouvelles offres sont cherchées pour toi chaque jour. Clique « Postuler » sur celle qui t'intéresse : ta lettre et ton CV sont prêts.</p><div class="actions"><a class="btn laiton grand" href="#offres">Voir les offres</a></div>`}
   </section>
-  <div id="d-mails"></div>
-  ${commentPostuler()}
   <div class="grille g2">
-    <section class="carte"><header><h2>Ensuite</h2><a class="btn petit" href="#candidatures">Mes candidatures</a></header>
+    <section class="carte">
+      <header>
+        <h2>Derniers échanges avec les employeurs</h2>
+        <a class="btn petit" href="#courriels">Tous les courriels</a>
+      </header>
+      <div id="d-derniers-echanges"><p class="vide">Chargement des courriels...</p></div>
+    </section>
+    <section class="carte">
+      <header>
+        <h2>Suivis et relances prioritaires</h2>
+        <a class="btn petit" href="#candidatures">Mes candidatures</a>
+      </header>
       ${taches.length > 1 ? `<ul class="liste taches">${taches.slice(1, 6).map((t) => `<li><div class="t"><b>${E(t.texte)}</b><small>${E(t.detail)}</small></div><div class="actions">${boutonTache(t)}</div></li>`).join("")}</ul>${taches.length > 6 ? `<p class="aide plus">Et ${taches.length - 6} autre${taches.length - 6 > 1 ? "s" : ""} dans <a href="#candidatures">Mes candidatures</a>.</p>` : ""}` : `<p class="vide">Rien d'autre pour l'instant.</p>`}
     </section>
-    <section class="carte"><header><h2>Nouvelles offres</h2><a class="btn petit" href="#offres">Toutes les offres</a></header><div id="d-offres"><p class="vide">Recherche des offres...</p></div></section>
   </div>
+  ${commentPostuler()}
   <div class="chiffres">
     <div><b>${envoyees}</b><span>candidature${envoyees > 1 ? "s" : ""} envoyée${envoyees > 1 ? "s" : ""}</span></div>
+    <div><b>${relancesEnRetard}</b><span>relance${relancesEnRetard > 1 ? "s" : ""} à faire</span></div>
     <div><b>${reponses}</b><span>réponse${reponses > 1 ? "s" : ""} reçue${reponses > 1 ? "s" : ""}</span></div>
-    <div><b>${entrevues}</b><span>entrevue${entrevues > 1 ? "s" : ""}</span></div>
     <div><b id="k-vis">-</b><span>visiteurs sur ton site, 30 jours</span></div>
     <div><b id="k-cv">-</b><span>CV téléchargés, 30 jours</span></div>
   </div>
   <details class="carte notes-carte" ${notes.trim() ? "open" : ""}><summary><h2>Notes</h2><span class="aide">Enregistrées automatiquement</span></summary>
     <textarea class="notes-libres" id="notes" placeholder="Contacts à appeler, idées, suivis...">${E(notes)}</textarea></details>`;
+
   $("#notes").oninput = (e) => { etat.d.notes = e.target.value; sauver("notes", 900); };
-  const me = $(".mode-emploi"); if (me) me.ontoggle = () => { try { localStorage.setItem("sb-mode-emploi", me.open ? "ouvert" : "ferme"); } catch { /* stockage indisponible */ } };
+  const me = $(".mode-emploi"); if (me) me.ontoggle = () => { try { localStorage.setItem("sb-mode-emploi", me.open ? "ouvert" : "ferme"); } catch { /* */ } };
   chargerStats(30).then((s) => {
     if (etat.page !== "tableau") return;
     $("#k-vis").textContent = s.totaux.visiteurs; $("#k-cv").textContent = s.totaux.cv;
   }).catch(() => {});
-  if (etat.mail?.pret) chargerBoite("recus").then(courrielsAccueil).catch(() => {});
-  chargerOffres().then(offresAccueil).catch((e) => { const el = $("#d-offres"); if (el) el.innerHTML = `<p class="vide">${E(e.message)}</p>`; });
+  if (etat.mail?.pret) {
+    chargerBoite("recus").then((l) => {
+      courrielsAccueil(l);
+      derniersEchangesAccueil(l);
+    }).catch(() => {});
+    chargerBoite("envoyes").then(() => {
+      if (etat.page === "tableau") derniersEchangesAccueil(etat.boite.listes.recus);
+    }).catch(() => {});
+  }
 }
 function courrielsAccueil(l) {
   const el = $("#d-mails"); if (!el || etat.page !== "tableau") return;
@@ -535,7 +762,7 @@ function pCandidatures() {
     return `<span class="aide">-</span>`;
   };
   $("#page").innerHTML = entete("Mes candidatures", "Toutes tes candidatures et la prochaine étape pour chacune.",
-    `<button class="btn" data-act="synchro" title="Retrouve dans Gmail tes envois, tes relances et les réponses reçues">Vérifier les envois et réponses</button><button class="btn laiton" data-act="nouvelle">Ajouter une candidature</button>`) + `
+    `<button class="btn laiton" data-act="sync-tout"><span class="ico-sync">↻</span> Synchroniser depuis mes courriels</button><button class="btn" data-act="nouvelle">Ajouter une candidature</button>`) + `
   <div class="filtres">${FILTRES.map(([k, n, fn]) => `<button type="button" data-filtre="${k}" aria-pressed="${k === f[0]}">${n} <b>${compte(fn)}</b></button>`).join("")}</div>
   <div class="barre-outils"><input class="recherche" type="search" id="rech" placeholder="Chercher une entreprise, un poste..." value="${E(etat.rech)}"><span class="aide">${liste.length} candidature${liste.length > 1 ? "s" : ""}</span></div>
   <div class="tableau-wrap"><table class="tab tab-cand"><thead><tr><th>Entreprise et poste</th><th>Statut</th><th>Envoyée le</th><th>Prochaine étape</th><th></th></tr></thead><tbody>
@@ -1367,7 +1594,15 @@ document.addEventListener("click", async (e) => {
       marquerEnvoyee(cand); return rendrePage();
     }
     case "relancer": return cand && preparerRelance(cand);
-    case "synchro": return synchroniser();
+    case "sync-tout": {
+      t.disabled = true;
+      t.innerHTML = `<span class="tourne"></span> Synchronisation...`;
+      await synchroniserBoite(true);
+      t.disabled = false;
+      t.innerHTML = `<span class="ico-sync">↻</span> Actualiser et synchroniser`;
+      return;
+    }
+    case "synchro": return synchroniserBoite(true);
     case "marquer-reponse": if (cand) { cand.reponseLe = jour(); cand.reponseTraitee = false; noter(cand, "Réponse reçue"); sauver("candidatures"); toast("Réponse notée."); } return;
     case "rafraichir-boite": etat.boite.listes = {}; return pCourriels();
     case "recreer-brouillons": {
