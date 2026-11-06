@@ -384,6 +384,7 @@ export async function aRepondreAvec(client, candidatures = [], { jours = 7 } = {
         const dom = ad.split("@")[1] || "";
         const cand = cands.find((x) => x.courriel.trim().toLowerCase() === ad) || (dom && !WEBMAIL.test(dom) ? cands.find((x) => x.courriel.trim().toLowerCase().endsWith("@" + dom)) : null);
         const recu = m.internalDate instanceof Date ? m.internalDate : new Date(m.internalDate || Date.now());
+        if (cand && ["refus", "ferme"].includes(cand.statut)) continue; // dossier clos : ne pas réclamer de réponse
         if (await trouver(`from:${INFO} to:${ad} after:${Math.floor(recu.getTime() / 1000)} -in:drafts`)) continue; // déjà répondu
         const important = Boolean(cand) || formulaire || (await trouver(`from:${INFO} to:${ad} -in:drafts`)) || (dom && !WEBMAIL.test(dom) && (await trouver(`from:${INFO} to:${dom} -in:drafts`)));
         if (!important) continue;

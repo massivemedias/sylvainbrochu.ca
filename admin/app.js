@@ -145,6 +145,7 @@ function aFaire() {
   const out = boutique().taches(); const auj = jour();
   (etat.aRepondre || []).forEach((x) => {
     const c = x.candidatureId ? (etat.d.candidatures || []).find((y) => y.id === x.candidatureId) : null;
+    if (c && ["refus", "ferme"].includes(c.statut)) return; // dossier clos : pas de tâche « Répondre »
     out.push({ type: "repondre", c, x, tri: x.date, texte: `Répondre à ${quiCourriel(x)}`, detail: `« ${x.sujet} », reçu ${depuis(x.date)}${x.formulaire ? " par le formulaire de ton site" : ""}. Répondre vite fait bonne impression.`, bouton: "Lire et répondre" });
   });
   (etat.d.candidatures || []).forEach((c) => {
@@ -622,22 +623,11 @@ function pTableau() {
   const date = new Date().toLocaleDateString("fr-CA", { weekday: "long", day: "numeric", month: "long" });
 
   const scandinaveCount = c.filter((x) => /scandinave/i.test(x.entreprise || "")).length;
-  const jwCand = c.find((x) => x.id === "jackworld" || /jack\s*world/i.test(x.entreprise || ""));
 
   let bannerHtml = "";
   if (scandinaveCount > 1) {
     bannerHtml += `<div class="bandeau-alerte">
       <b>Attention Scandinave Spa (${scandinaveCount} candidatures actives) :</b> Le système Dayforce n'accepte qu'une seule candidature active par candidat à la fois.
-    </div>`;
-  }
-  if (jwCand && jwCand.statut === "refus") {
-    bannerHtml += `<div class="bandeau-retour">
-      <div class="retour-info">
-        <span class="tag-retour">Retour d'expérience : 5 nov.</span>
-        <h3>Jack World : Chargé de projets</h3>
-        <p>Un autre candidat a été retenu. Conseil pour tes prochaines entrevues : structure davantage tes réponses sur les méthodes de planification, les échéanciers et le suivi client.</p>
-      </div>
-      <button class="btn petit" data-act="fiche" data-id="${jwCand.id}">Voir la fiche</button>
     </div>`;
   }
 
