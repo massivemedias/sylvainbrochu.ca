@@ -74,7 +74,8 @@ export function creerSite(ctx) {
         <li>Choisis la page à corriger dans la liste « Page ».</li>
         <li>Clique un texte sur la page et écris directement, comme dans un courriel. Dans une liste, Entrée ajoute une ligne.</li>
         <li>Clique une photo pour la remplacer, la déplacer ou la supprimer.</li>
-        <li>Pour ajouter des photos, clique « + Ajouter des photos » en haut. Tu peux en choisir plusieurs d'un coup. Si la page n'a pas encore d'images, la section se crée toute seule.</li>
+        <li>Pour ajouter des photos, clique « + Ajouter des photos » en haut : tu choisis d'abord la page et l'endroit exact où elles doivent apparaître, puis tu les sélectionnes, plusieurs d'un coup si tu veux.</li>
+        <li>Une photo au mauvais endroit ? « Déplacer des photos » : tu coches celles à bouger et tu choisis la page d'arrivée.</li>
         <li>Clique « Publier ». Ta page est en ligne environ une minute plus tard, un message te le confirme.</li>
       </ol>
       <p class="aide">Un texte qui revient sur plusieurs pages (par exemple le titre d'un projet sur l'accueil) se corrige sur chaque page. Le site en anglais se corrige à part, avec le bouton « Version anglaise ».</p>
@@ -85,6 +86,7 @@ export function creerSite(ctx) {
         <a class="btn petit" href="${E(urlPage(s.chemin))}" target="_blank" rel="noopener">Voir en ligne</a>
         ${jumelle ? `<button class="btn petit" data-st="jumelle">${s.chemin.startsWith("en/") ? "Version française" : "Version anglaise"}</button>` : ""}
         <button class="btn petit laiton" data-st="photos">+ Ajouter des photos</button>
+        <button class="btn petit" data-st="deplacer">Déplacer des photos</button>
         <button class="btn petit" data-st="menu">Ordre du menu</button>
         <button class="btn petit" data-st="blocs">Organiser les sections</button>
         <button class="btn petit" data-st="google">Titre et description Google</button>
@@ -98,8 +100,9 @@ export function creerSite(ctx) {
     <div class="st-cadre"><iframe id="st-apercu" title="Ta page, modifiable"></iframe></div>
     <p class="aide st-aide">Entrée dans une liste ou un paragraphe : ajoute une ligne. Une ligne vidée puis Retour arrière : la supprime. Une photo d'une galerie : clique-la pour la remplacer ou la supprimer.${s.chemin.startsWith("en/") ? "" : " Pense aussi à la version anglaise de la page."}</p>`;
     $("#st-page").onchange = (e) => changerPage(e.target.value);
-    construireApercu();
+    const pret = construireApercu();
     majBarre();
+    return pret;
   }
 
   function majBarre() {
@@ -389,17 +392,26 @@ export function creerSite(ctx) {
   const idDe = (el) => { for (const [id, x] of s.ids) if (x === el) return id; return null; };
 
   // Une page sans galerie : on lui en crée une, au même format que les autres pages du site.
-  function creerGalerie() {
-    const anglais = s.chemin.startsWith("en/");
-    const main = s.doc.querySelector("main") || s.doc.body;
-    const sec = s.doc.createElement("section");
+  function nouvelleGalerie(doc, anglais, apres) {
+    const main = doc.querySelector("main") || doc.body;
+    const sec = doc.createElement("section");
     sec.className = "galerie";
-    sec.setAttribute("aria-labelledby", "t-galerie");
-    sec.innerHTML = `<div class="wrap"><h2 id="t-galerie">${anglais ? "Gallery" : "Images"}</h2><div class="grille"></div></div>`;
-    const voisins = main.querySelector("nav.voisins");
-    if (voisins) voisins.before(sec); else main.append(sec);
-    s.nb++;
+    const id = main.querySelector("#t-galerie") ? "t-galerie-" + Date.now().toString(36) : "t-galerie";
+    sec.setAttribute("aria-labelledby", id);
+    sec.innerHTML = `<div class="wrap"><h2 id="${id}">${anglais ? "Gallery" : "Images"}</h2><div class="grille"></div></div>`;
+    // Placée juste après la section choisie ; sinon à la fin, avant « Autres projets ».
+    if (apres && apres.parentElement === main) apres.after(sec);
+    else { const voisins = main.querySelector("nav.voisins"); if (voisins) voisins.before(sec); else main.append(sec); }
     return sec.querySelector(".grille");
+  }
+  function creerGalerie(apres) { const g = nouvelleGalerie(s.doc, s.chemin.startsWith("en/"), apres); s.nb++; return g; }
+
+  // Nombre de photos annoncé au-dessus d'une galerie (« 12 images »)
+  function majCompte(sec) {
+    const compte = sec?.querySelector(".compte"), g = sec?.querySelector(".grille");
+    if (!compte || !g) return;
+    const n = g.querySelectorAll("figure").length;
+    compte.textContent = compte.textContent.replace(/\d+/, n).replace(/\bimages?\b/, n > 1 ? "images" : "image");
   }
 
   function choisirFichiers() {
@@ -412,17 +424,101 @@ export function creerSite(ctx) {
     });
   }
 
-  // Bouton « Ajouter des photos » de la barre : marche sur toutes les pages,
-  // même celles qui n'ont pas encore d'images.
+  // ---------- Bouton « Ajouter des photos » de la barre ----------
+  // Avant, les photos tombaient dans la première galerie de la page ouverte, ou dans une
+  // nouvelle galerie créée tout en bas. Maintenant on demande d'abord OÙ : la page, puis
+  // la galerie exacte (ou une nouvelle, placée après la section de son choix).
+  function titreSection(el) {
+    if (!el) return "Section";
+    const net = (t) => String(t || "").replace(/\s+/g, " ").trim();
+    const a = net(el.querySelector(".surtitre")?.textContent).slice(0, 45);
+    const b = net(el.querySelector("h1, h2, h3, h4")?.textContent).slice(0, 55);
+    if (a && b) return `${a} : ${b}`;
+    if (b) return b;
+    if (a) return a;
+    const aria = net(el.getAttribute("aria-label"));
+    if (aria) return aria.slice(0, 55);
+    const t = net(el.textContent).slice(0, 55);
+    return t || net(el.className).split(" ")[0].replace(/-/g, " ") || el.tagName.toLowerCase();
+  }
+  // Les galeries de photos de la page ouverte (une galerie = une grille de figures).
+  const galeriesDe = (doc) => [...zone(doc).querySelectorAll(".grille")]
+    .filter((g) => !g.closest(".produit-page"))
+    .map((g) => ({ el: g, titre: titreSection(g.closest("section") || g.parentElement), nb: g.querySelectorAll("figure").length }));
+  const galeriesDoc = () => galeriesDe(s.doc);
+  // Les grandes sections de la page, pour placer une nouvelle galerie.
+  const sectionsDoc = () => [...zone(s.doc).children].filter((el) => !/^(SCRIPT|TEMPLATE|STYLE|LINK)$/.test(el.tagName));
+
   async function ajouterPhotosPage() {
-    const fichiers = await choisirFichiers();
-    if (!fichiers.length) return;
-    let grille = s.doc.querySelector(".galerie .grille");
-    if (!grille) { grille = creerGalerie(); await construireApercu(); }
-    const gid = idDe(grille);
-    if (!gid) return toast("Impossible d'ajouter une photo sur cette page.", true);
-    enApercu(gid)?.closest("section")?.scrollIntoView({ block: "start", behavior: "smooth" });
-    await ajouterPhotos(gid, fichiers);
+    const groupes = {};
+    s.pages.forEach((c) => { (groupes[groupe(c)] = groupes[groupe(c)] || []).push(c); });
+    const ordreG = ["Pages principales", "Mes projets", "English", "English : projects"];
+    const optionsPages = () => ordreG.filter((g) => groupes[g]).map((g) => `<optgroup label="${E(g)}">${groupes[g]
+      .slice().sort((a, b) => (a.split("/").length - b.split("/").length) || nomPage(a).localeCompare(nomPage(b), "fr"))
+      .map((c) => `<option value="${E(c)}" ${c === s.chemin ? "selected" : ""}>${E(nomPage(c))}</option>`).join("")}</optgroup>`).join("");
+
+    ouvrirModale("Ajouter des photos", `
+      <p class="aide">Choisis la page, puis l'endroit exact où les photos doivent apparaître. Rien ne bouge sur ton site tant que tu n'as pas cliqué « Publier ».</p>
+      <label class="champ ph-champ"><span>Page</span><select id="ph-page">${optionsPages()}</select></label>
+      <div class="ph-ou" id="ph-ou"></div>
+      <p class="aide ph-attente" hidden><span class="tourne"></span> Ouverture de la page...</p>`,
+    `<button class="btn" data-ph="annuler">Annuler</button>
+     <button class="btn laiton" data-ph="choisir">Choisir les photos...</button>`,
+    (m) => {
+      const dessinerOu = () => {
+        const gals = galeriesDoc(), secs = sectionsDoc();
+        const opts = gals.map((g, i) => `<option value="${i}">${gals.length > 1 ? `${i + 1}. ` : ""}${E(g.titre)} (${g.nb} photo${g.nb > 1 ? "s" : ""})</option>`).join("");
+        $("#ph-ou", m).innerHTML = `
+          <label class="champ ph-champ"><span>Endroit</span>
+            <select id="ph-dest">${opts}<option value="neuve" ${gals.length ? "" : "selected"}>Créer une nouvelle galerie sur cette page</option></select>
+          </label>
+          <label class="champ ph-champ" id="ph-pos" ${gals.length ? "" : "hidden"}><span>Position dans la galerie</span>
+            <select id="ph-pos-sel"><option value="fin">à la fin, après les photos déjà là</option><option value="debut">au début, avant les autres</option></select>
+          </label>
+          <label class="champ ph-champ" id="ph-apres" ${gals.length ? "hidden" : ""}><span>Placer la nouvelle galerie</span>
+            <select id="ph-apres-sel">${secs.map((el, i) => `<option value="${i}" ${i === secs.length - 1 ? "selected" : ""}>après « ${E(titreSection(el))} »</option>`).join("")}</select>
+          </label>
+          <p class="aide">${gals.length ? "Tu peux aussi déplacer cette galerie plus tard avec « Organiser les sections »." : "Cette page n'a pas encore de galerie : on en crée une à l'endroit que tu choisis."}</p>`;
+        $("#ph-dest", m).onchange = (e) => {
+          const neuve = e.target.value === "neuve";
+          $("#ph-pos", m).hidden = neuve;
+          $("#ph-apres", m).hidden = !neuve;
+        };
+      };
+      dessinerOu();
+
+      $("#ph-page", m).onchange = async (e) => {
+        const c = e.target.value;
+        if (c === s.chemin) return;
+        if (sale()) { e.target.value = s.chemin; return toast("Publie ou annule d'abord tes changements sur cette page.", true); }
+        const att = $(".ph-attente", m); att.hidden = false; e.target.disabled = true;
+        try { await charger(c, true); await dessiner(); }
+        catch (err) { e.target.value = s.chemin; toast(err.message, true); }
+        att.hidden = true; e.target.disabled = false;
+        dessinerOu();
+      };
+
+      m.addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-ph]"); if (!b) return;
+        e.preventDefault();
+        if (b.getAttribute("data-ph") === "annuler") return fermerModale();
+        // On lit les choix AVANT d'ouvrir le sélecteur de fichiers : la fenêtre se ferme ensuite.
+        const dest = $("#ph-dest", m).value;
+        const position = $("#ph-pos-sel", m)?.value || "fin";
+        const iApres = +($("#ph-apres-sel", m)?.value ?? -1);
+        const fichiers = await choisirFichiers();
+        if (!fichiers.length) return;
+        fermerModale();
+        let grille;
+        if (dest === "neuve") { grille = creerGalerie(sectionsDoc()[iApres]); await construireApercu(); }
+        else grille = galeriesDoc()[+dest]?.el;
+        if (!grille) return toast("Cette galerie n'existe plus. Rouvre « + Ajouter des photos ».", true);
+        const gid = idDe(grille);
+        if (!gid) return toast("Impossible d'ajouter une photo à cet endroit.", true);
+        enApercu(gid)?.closest("section")?.scrollIntoView({ block: "start", behavior: "smooth" });
+        await ajouterPhotos(gid, fichiers, dest === "neuve" ? "fin" : position);
+      });
+    });
   }
 
   function choisirPhotos(gid) {
@@ -430,14 +526,19 @@ export function creerSite(ctx) {
     i.onchange = () => { ajouterPhotos(gid, [...i.files]); i.remove(); };
     document.body.append(i); i.click();
   }
-  async function ajouterPhotos(gid, fichiers) {
+  async function ajouterPhotos(gid, fichiers, position) {
     const grille = s.ids.get(gid), d = apercuDoc(), vueGrille = enApercu(gid);
     if (!grille || !fichiers.length || !vueGrille) return;
+    // « au début » : on insère chaque photo devant la première, l'ordre choisi est gardé.
+    const ancre = position === "debut" ? grille.firstElementChild : null;
+    const vAncre = position === "debut" ? vueGrille.firstElementChild : null;
+    // Le bouton de la galerie sert de barre de progression ; il n'existe pas toujours.
     const bouton = d.querySelector(`[data-cms-ajout="${gid}"]`);
+    const etape = (t) => { if (bouton) { bouton.textContent = t; bouton.disabled = t !== null && !/^\+/.test(t); } };
     const modele = grille.querySelector("figure");
     const anglais = s.chemin.startsWith("en/");
     for (const [k, fichier] of fichiers.entries()) {
-      bouton.textContent = `Préparation de la photo ${k + 1} sur ${fichiers.length}...`; bouton.disabled = true;
+      etape(`Préparation de la photo ${k + 1} sur ${fichiers.length}...`);
       try {
         const v = await preparer(fichier, titrePage());
         let fig;
@@ -453,19 +554,146 @@ export function creerSite(ctx) {
         if (cap) cap.textContent = "";
         if (btn) { btn.setAttribute("data-legende", ""); btn.setAttribute("aria-label", (anglais ? "Enlarge: " : "Agrandir : ") + titrePage()); }
         appliquer(img, null, v);
-        grille.append(fig); s.figs.add(fig); s.grilles = (s.grilles || new Set()).add(grille); s.nb++;
+        if (ancre) grille.insertBefore(fig, ancre); else grille.append(fig);
+        s.figs.add(fig); s.grilles = (s.grilles || new Set()).add(grille); s.nb++;
         // Même figure dans l'aperçu, avec la photo locale
         const vueFig = d.importNode(fig, true);
         const vImg = vueFig.querySelector("img"); vImg.removeAttribute("srcset"); vImg.src = v[v.length - 1].url;
         const idImg = String(s.prochainId++); vImg.setAttribute("data-cms", idImg); vImg.setAttribute("data-cms-t", "i"); s.ids.set(idImg, img);
         const vCap = vueFig.querySelector("figcaption");
         if (vCap && cap) { const idCap = String(s.prochainId++); vCap.setAttribute("data-cms", idCap); vCap.setAttribute("data-cms-t", "t"); vCap.contentEditable = "true"; s.ids.set(idCap, cap); }
-        vueGrille.append(vueFig);
+        if (vAncre) vueGrille.insertBefore(vueFig, vAncre); else vueGrille.append(vueFig);
         majBarre();
       } catch (err) { toast(err.message, true); }
     }
-    bouton.textContent = "+ Ajouter des photos à cette galerie"; bouton.disabled = false;
+    etape("+ Ajouter des photos à cette galerie");
     toast("Photos ajoutées. Écris une légende sous chacune si tu veux, puis clique « Publier ».");
+  }
+
+  // ---------- Déplacer des photos vers une autre page ----------
+  // Les photos ajoutées au fil du temps se sont accumulées au bas de l'accueil.
+  // Ici Sylvain en coche plusieurs d'un coup et les envoie dans la galerie d'une autre
+  // page : les deux pages sont publiées ensemble, en une seule fois.
+  async function deplacerPhotos() {
+    if (sale()) return toast("Publie ou annule d'abord tes changements sur cette page.", true);
+    const figs = [];
+    galeriesDoc().forEach((g) => [...g.el.children].filter((x) => x.tagName === "FIGURE").forEach((f) => figs.push(f)));
+    if (!figs.length) return toast("Cette page n'a pas encore de photos à déplacer.", true);
+
+    const en = s.chemin.startsWith("en/");
+    const dest = s.pages.filter((c) => c !== s.chemin && c.startsWith("en/") === en && !/\/(merci|thank-you)\//.test("/" + c));
+    if (!dest.length) return toast("Aucune autre page où envoyer ces photos.", true);
+    let cible = null, envoi = false;
+
+    const vignette = (f) => {
+      const img = f.querySelector("img");
+      const leg = (f.querySelector("figcaption")?.textContent || img?.getAttribute("alt") || "").replace(/\s+/g, " ").trim();
+      return { src: img?.getAttribute("src") || "", leg };
+    };
+
+    ouvrirModale("Déplacer des photos", `
+      <p class="aide">Coche les photos à déplacer, choisis la page où elles doivent aller, puis clique « Déplacer ». Les deux pages sont mises en ligne d'un coup.</p>
+      <div class="dp-barre">
+        <button type="button" class="btn petit" data-dp="tout">Tout cocher</button>
+        <button type="button" class="btn petit" data-dp="rien">Tout décocher</button>
+        <span class="dp-compte" id="dp-compte"></span>
+      </div>
+      <div class="dp-grille" id="dp-grille">${figs.map((f, i) => {
+        const v = vignette(f);
+        return `<label class="dp-case"><input type="checkbox" data-i="${i}"><img src="${E(v.src)}" alt="" loading="lazy"><span>${E(v.leg || "Sans légende")}</span></label>`;
+      }).join("")}</div>
+      <label class="champ ph-champ"><span>Page d'arrivée</span>
+        <select id="dp-page"><option value="">Choisis une page...</option>${dest.map((c) => `<option value="${E(c)}">${E(nomPage(c))}</option>`).join("")}</select>
+      </label>
+      <div class="dp-ou" id="dp-ou"></div>
+      <p class="aide dp-envoi" hidden><span class="tourne"></span> Déplacement et mise en ligne des deux pages...</p>`,
+    `<button class="btn" data-dp="annuler">Annuler</button>
+     <button class="btn laiton" data-dp="faire" disabled>Déplacer</button>`,
+    (m) => {
+      const cases = () => [...m.querySelectorAll("#dp-grille input")];
+      const choisies = () => cases().filter((c) => c.checked).map((c) => figs[+c.getAttribute("data-i")]);
+      const majEtat = () => {
+        const n = choisies().length;
+        $("#dp-compte", m).textContent = n ? `${n} photo${n > 1 ? "s" : ""} cochée${n > 1 ? "s" : ""} sur ${figs.length}` : `Aucune photo cochée sur ${figs.length}`;
+        $('[data-dp="faire"]', m).disabled = !n || !cible || envoi;
+      };
+      $("#dp-grille", m).addEventListener("change", majEtat);
+      majEtat();
+
+      $("#dp-page", m).onchange = async (e) => {
+        const c = e.target.value; cible = null; $("#dp-ou", m).innerHTML = ""; majEtat();
+        if (!c) return;
+        e.target.disabled = true;
+        $("#dp-ou", m).innerHTML = `<p class="aide"><span class="tourne"></span> Lecture de la page...</p>`;
+        try {
+          const r = await api(`/api/site/?action=page&chemin=${encodeURIComponent(c)}`);
+          const doc = new DOMParser().parseFromString(r.contenu, "text/html");
+          cible = { chemin: c, sha: r.sha, doc, doctype: (r.contenu.match(/^\s*<!doctype[^>]*>/i) || ["<!doctype html>"])[0].trim() };
+          const gals = galeriesDe(doc);
+          $("#dp-ou", m).innerHTML = `
+            <label class="champ ph-champ"><span>Dans quelle galerie de « ${E(nomPage(c))} »</span>
+              <select id="dp-dest">${gals.map((g, i) => `<option value="${i}">${gals.length > 1 ? `${i + 1}. ` : ""}${E(g.titre)} (${g.nb} photo${g.nb > 1 ? "s" : ""})</option>`).join("")}<option value="neuve" ${gals.length ? "" : "selected"}>Créer une nouvelle galerie à la fin de la page</option></select>
+            </label>
+            <label class="champ ph-champ"><span>Position</span>
+              <select id="dp-pos"><option value="fin">à la fin, après les photos déjà là</option><option value="debut">au début, avant les autres</option></select>
+            </label>`;
+        } catch (err) { $("#dp-ou", m).innerHTML = `<p class="aide">Page impossible à lire : ${E(err.message)}</p>`; }
+        e.target.disabled = false; majEtat();
+      };
+
+      m.addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-dp]"); if (!b) return;
+        e.preventDefault();
+        const a = b.getAttribute("data-dp");
+        if (a === "annuler") return envoi ? null : fermerModale();
+        if (a === "tout" || a === "rien") { cases().forEach((c) => { c.checked = a === "tout"; }); return majEtat(); }
+        if (a !== "faire" || envoi) return;
+        const liste = choisies();
+        if (!liste.length || !cible) return;
+        envoi = true; majEtat(); $(".dp-envoi", m).hidden = false;
+        try {
+          // Page d'arrivée : on y copie les figures telles quelles (les photos sont déjà en ligne).
+          const choixDest = $("#dp-dest", m).value, pos = $("#dp-pos", m).value;
+          const grilleCible = choixDest === "neuve"
+            ? nouvelleGalerie(cible.doc, cible.chemin.startsWith("en/"))
+            : galeriesDe(cible.doc)[+choixDest]?.el;
+          if (!grilleCible) throw new Error("Galerie d'arrivée introuvable.");
+          const ancre = pos === "debut" ? grilleCible.firstElementChild : null;
+          for (const f of liste) {
+            const copie = cible.doc.importNode(f, true);
+            if (ancre) grilleCible.insertBefore(copie, ancre); else grilleCible.append(copie);
+          }
+          majCompte(grilleCible.closest("section.galerie"));
+
+          // Page de départ : on retire les figures, on remet les compteurs, on enlève une galerie vidée.
+          const secs = new Set();
+          liste.forEach((f) => { const sec = f.closest("section.galerie"); if (sec) secs.add(sec); f.remove(); });
+          secs.forEach(majCompte);
+          s.doc.querySelectorAll("section.galerie").forEach((sec) => { if (!sec.querySelector(".grille figure")) sec.remove(); });
+
+          const n = liste.length;
+          const r = await api("/api/site/?action=publier", { method: "POST", body: {
+            fichiers: [
+              { chemin: s.chemin, contenu: s.doctype + "\n" + s.doc.documentElement.outerHTML + "\n", sha: s.sha },
+              { chemin: cible.chemin, contenu: cible.doctype + "\n" + cible.doc.documentElement.outerHTML + "\n", sha: cible.sha },
+            ],
+            message: `Mon site : ${n} photo${n > 1 ? "s" : ""} de ${nomPage(s.chemin)} vers ${nomPage(cible.chemin)}`,
+          } });
+          s.sha = r.shas?.[s.chemin] || s.sha;
+          s.orig = new Map(); s.modifs = new Set(); s.nb = 0; s.photos = []; s.figs = new Set(); s.grilles = new Set();
+          s.publieLe = Date.now(); s.enLigne = false;
+          fermerModale();
+          await dessiner();
+          toast(`${n} photo${n > 1 ? "s déplacées" : " déplacée"} vers ${nomPage(cible.chemin)}. En ligne dans environ une minute.`);
+          verifierEnLigne(s.chemin, s.sha);
+        } catch (err) {
+          envoi = false; $(".dp-envoi", m).hidden = true; majEtat();
+          toast(err.code === "REFUS" ? err.message : "Pas déplacé : " + err.message, true);
+          // Rien n'a été publié : on remet la page dans l'état du site pour repartir propre.
+          try { fermerModale(); await charger(s.chemin, true); await dessiner(); } catch { /* on laisse l'écran tel quel */ }
+        }
+      });
+    });
   }
 
   // ---------- Titre et description Google ----------
@@ -861,6 +1089,7 @@ export function creerSite(ctx) {
     if (a === "google") reglagesGoogle();
     if (a === "menu") ordreMenu();
     if (a === "photos") ajouterPhotosPage();
+    if (a === "deplacer") deplacerPhotos();
     if (a === "blocs") organiserBlocs();
     if (a === "compris") { try { localStorage.setItem("sb-site-guide", "vu"); } catch { /* sans mémoire */ } t.closest(".st-guide")?.remove(); }
     if (a === "zones") {

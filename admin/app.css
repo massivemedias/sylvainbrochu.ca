@@ -511,3 +511,20 @@ select option { background: #fff; color: var(--texte); }
 .methode-liste li { line-height: 1.45; }
 .methode-liste li b { font-weight: 650; }
 .methode-mail { margin: 12px 0 2px; }
+
+/* ---------- Ajouter des photos : choix de la page et de l'endroit ---------- */
+.ph-champ { margin: 0 0 14px; }
+.ph-ou { display: block; }
+.ph-ou .aide { margin: 2px 0 0; }
+.ph-attente { margin-top: 10px; }
+.dp-barre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+.dp-compte { font-size: .85rem; color: var(--doux); margin-left: auto; }
+.dp-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; max-height: 42vh; overflow: auto; padding: 4px; border: 1px solid var(--trait); border-radius: 6px; background: var(--carte-2); margin: 0 0 16px; }
+.dp-case { position: relative; display: block; cursor: pointer; border: 2px solid transparent; border-radius: 5px; overflow: hidden; background: var(--carte); }
+.dp-case img { display: block; width: 100%; height: 84px; object-fit: cover; }
+.dp-case span { display: block; padding: 4px 6px; font-size: .72rem; line-height: 1.3; color: var(--doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-case input { position: absolute; top: 6px; left: 6px; width: 19px; height: 19px; accent-color: var(--laiton-fonce); cursor: pointer; }
+.dp-case:has(input:checked) { border-color: var(--laiton); box-shadow: 0 0 0 2px rgba(200,162,107,.3); }
+.dp-case:has(input:checked) img { filter: brightness(1.04); }
+.dp-ou { display: block; }
+.dp-envoi { margin-top: 10px; }
